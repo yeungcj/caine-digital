@@ -1053,18 +1053,12 @@ for (const c of COMPANIES) {
 // Closing screen: the whole portfolio as a list, grouped by sector and alphabetical inside each sector.
 // Each entry opens the same description as its label does.
 const plist = document.getElementById('plist');
-const pcols = [0, 1].map(() => {
-  const col = document.createElement('div');
-  col.className = 'pcol';
-  plist.appendChild(col);
-  return col;
-});
 const sectorList = {};
 for (const sec of SECTORS) {
   const group = document.createElement('section');
   group.className = 'pgroup';
   group.innerHTML = `<h3 class="psec">${sec.label.replace('&', '&amp;')}</h3><ul></ul>`;
-  pcols[sec.col].appendChild(group);
+  plist.appendChild(group);
   sectorList[sec.id] = group.lastChild;
 }
 for (const c of [...COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))) {
@@ -1092,7 +1086,8 @@ for (const c of [...COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'en',
 const copyTop = [];
 const rail = document.querySelector('.rail');
 const portfolio = document.querySelector('.portfolio');
-let portTop = 0; // top of the portfolio list on the closing screen, in px
+let portTop = 0; // top and left of the portfolio list on the closing screen, in px
+let portLeft = 0;
 let railLeft = window.innerWidth;
 function measure() {
   for (const c of COMPANIES) {
@@ -1103,7 +1098,9 @@ function measure() {
   // Labels and descriptions stop short of the progress ticks on the right.
   const rr = rail.getBoundingClientRect();
   railLeft = rr.width ? rr.right - 34 : window.innerWidth;
-  portTop = portfolio.getBoundingClientRect().top;
+  const pr = portfolio.getBoundingClientRect();
+  portTop = pr.top;
+  portLeft = pr.left;
   panels.forEach((p, i) => {
     const copy = p.querySelector('.copy');
     copyTop[i] = copy ? copy.getBoundingClientRect().top : window.innerHeight;
@@ -1536,21 +1533,24 @@ function update(s, dt) {
   // Closing screen: the globe moves aside (left on desktop, up on phones) to make room for the portfolio list.
   const closeK = sramp(s, 6.0, 6.55);
   const cityK = win(s, 4.95, 5.36, 5.9, 6.2);
-  // On phones the globe sits in the space between the header and the portfolio list, sized to fit it.
-  const globeR = clamp((portTop - 60) * 0.345, 36, window.innerWidth * 0.24);
+  // The globe sits in the space the portfolio list leaves free, and is sized to fit it: left of the list
+  // on desktop, between the header and the list on phones.
+  const desk = isDesktop();
+  const globeR = desk
+    ? Math.max(60, (portLeft - 60) / 2.3)
+    : clamp((portTop - 60) * 0.345, 36, window.innerWidth * 0.24);
+  const globeX = portLeft * 0.49;
   const globeY = portTop - 16 - globeR;
-  if (!isDesktop()) {
-    dist *= 1 + 0.1 * cityK;
-    if (closeK > 0) {
-      // Camera distance at which the globe is globeR px across its radius, as a multiple of the offset.
-      const want = (ER * window.innerHeight) / (2 * globeR * Math.tan((camera.fov * Math.PI) / 360));
-      const v = kA.copy(camPos).sub(camTgt);
-      const w = kB.copy(camTgt).sub(EARTH_C);
-      const vv = v.lengthSq();
-      const vw = v.dot(w);
-      const fit = (-vw + Math.sqrt(Math.max(0, vw * vw - vv * (w.lengthSq() - want * want)))) / vv;
-      dist = mix(dist, Math.max(dist, fit), closeK);
-    }
+  if (!desk) dist *= 1 + 0.1 * cityK;
+  if (closeK > 0) {
+    // Camera distance at which the globe is globeR px across its radius, as a multiple of the offset.
+    const want = (ER * window.innerHeight) / (2 * globeR * Math.tan((camera.fov * Math.PI) / 360));
+    const v = kA.copy(camPos).sub(camTgt);
+    const w = kB.copy(camTgt).sub(EARTH_C);
+    const vv = v.lengthSq();
+    const vw = v.dot(w);
+    const fit = (-vw + Math.sqrt(Math.max(0, vw * vw - vv * (w.lengthSq() - want * want)))) / vv;
+    dist = mix(dist, Math.max(dist, fit), closeK);
   }
   camPos.sub(camTgt).multiplyScalar(dist).add(camTgt);
   const shake = reducedMotion ? 0 : win(s, 2.2, 2.3, 2.4, 2.5) * 0.045;
@@ -1561,9 +1561,15 @@ function update(s, dt) {
   );
   camera.lookAt(camTgt);
   // Shift the picture so the object sits clear of the copy.
-  if (isDesktop()) {
+  if (desk) {
     // The town is wider than the other models, so it sits nearer the middle.
-    setShift(Math.round(window.innerWidth * (-0.13 + 0.04 * cityK + 0.33 * closeK)), Math.round(window.innerHeight * 0.07 * closeK));
+    let sx = window.innerWidth * (-0.13 + 0.04 * cityK);
+    if (closeK > 0) {
+      camera.updateMatrixWorld(true);
+      const x0 = (kA.copy(EARTH_C).project(camera).x + 1) * 0.5 * window.innerWidth + (shiftX || 0);
+      sx = mix(sx, x0 - globeX, closeK);
+    }
+    setShift(Math.round(sx), Math.round(window.innerHeight * 0.07 * closeK));
   } else {
     const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 4.1, 4.3, 4.9, 5.05) * 0.07 - cityK * 0.02;
     let sy = window.innerHeight * 0.13;

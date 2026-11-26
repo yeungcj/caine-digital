@@ -106,13 +106,13 @@ export const COMPANIES = [
   },
 ];
 
-// Sectors for the portfolio list on the closing screen, in display order. `col` is the column on that
-// screen; companies are listed alphabetically inside each sector.
+// Sectors for the portfolio list on the closing screen, in display order. Each sector is a heading with
+// its companies in rows beneath it, alphabetical from left to right.
 export const SECTORS = [
-  { id: 'ai', label: 'AI', col: 0 },
-  { id: 'space', label: 'Space & Defence', col: 1 },
-  { id: 'neuro', label: 'Neurotechnology', col: 1 },
-  { id: 'crypto', label: 'Crypto & Gaming', col: 1 },
+  { id: 'ai', label: 'AI' },
+  { id: 'space', label: 'Space & Defence' },
+  { id: 'neuro', label: 'Neurotechnology' },
+  { id: 'crypto', label: 'Crypto & Gaming' },
 ];
 
 export const CITIES = [
