@@ -164,6 +164,7 @@ h1, h2 {
   max-width: 13.5em;
 }
 .hero h1 em { font-style: italic; color: var(--ember); }
+.hero .copy p { max-width: none; margin-top: 24px; text-wrap: balance; }
 h2 {
   font-size: clamp(46px, 6.6vw, 104px);
   line-height: 0.94;
