@@ -14,10 +14,13 @@ export const STAGES = [
 // run off the screen. A blade anchor with `edge: 'left'` pins to the left edge of the rack instead of the right.
 // A panel anchor with `wing: 'left'` pins to the satellite's left solar panel instead of the right.
 // A jet anchor pins to the aircraft that flies over the Earth stage.
+// A landmark anchor pins to that company's building in the town of the Network stage.
 // On phones the model sits at the left of the screen, so rack and satellite labels go on the right there.
 // Optional fields:
 //   `at: [in0, in1, out0, out1]`  show the label only for part of its stage (stage positions, e.g. 2.14)
 //   `exited: true`                adds a small "Exited" badge
+//   `mdy: -24`                    a different `dy` on phones
+//   `stack: true`                 keep the preferred side even where the label then sits above its anchor
 //   `reach: 0.6`                  shorten (or lengthen) the leader line on desktop, as a multiple of the default
 //   `chipBg`, `pad`               logo tile background colour, and inset the logo inside the tile
 //   `display: 'name'`             name only: no logo and no link
@@ -86,19 +89,19 @@ export const COMPANIES = [
     id: 'yuga', name: 'Yuga Labs', stage: 5, tag: 'Web3',
     desc: 'Yuga Labs is the web3 studio that created Bored Ape Yacht Club in 2021, one of the best-known NFT collections. It also builds Otherside, a virtual world that runs in the browser, and the ApeChain network around the ApeCoin token. Holders own their characters and can license them commercially.',
     url: 'https://yuga.com', logo: 'assets/logos/yuga.png', pad: true,
-    anchor: { type: 'city', name: 'Tokyo' }, side: 1, dy: -40,
+    anchor: { type: 'landmark' }, side: -1, dy: -30, reach: 0.6,
   },
   {
     id: 'predictex', name: 'PredictEX', stage: 5, tag: 'Prediction markets',
     desc: 'PredictEX is an exchange for trading the outcomes of sporting events. Prices are set by the market rather than by a bookmaker, and positions can be traded while a game is in play. Trades settle on-chain in USDC on the Base network.',
     url: 'https://www.predictex.com', logo: 'assets/logos/predictex.png',
-    anchor: { type: 'city', name: 'Singapore' }, side: 1, dy: 44,
+    anchor: { type: 'landmark' }, side: 1, dy: -44, stack: true,
   },
   {
     id: 'gains', name: 'Gains', stage: 5, tag: 'Social gaming',
     desc: 'Gains is a social casino for adults in the United States, based in Miami. Its games are played with free Gold Coins for entertainment, with separate Sweeps Coins used for sweepstakes prizes, and no purchase is needed to play. Availability varies by state.',
     url: 'https://gains.com', logo: 'assets/logos/gains.png',
-    anchor: { type: 'city', name: 'Dubai' }, side: -1, dy: -30,
+    anchor: { type: 'landmark' }, side: -1, dy: 24, mdy: -24, stack: true,
   },
 ];
 

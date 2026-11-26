@@ -436,9 +436,18 @@ beamL.group.children.forEach((c) => { c.frustumCulled = false; c.renderOrder = 5
 /* ------------------------------------------------------------------ */
 /* Head and chip                                                        */
 /* ------------------------------------------------------------------ */
-const headL = mkLayer();
-headL.group.position.set(0, -1.35, 4);
-headL.group.scale.setScalar(1.0);
+// The head belongs to a person who stands in the town of the Network stage. In the Mind stage the whole
+// town is scaled up so that only the head is in view, at the size and place it was modelled for.
+const TOWN_HEAD = 0.1; // the head inside the town, relative to its close-up size
+const HEAD_Y = 1.6; // head centre above the ground, in town units
+const HEAD_CLOSE = new V3(0, -1.35, 4);
+const town = new THREE.Group();
+scene.add(town);
+const person = new THREE.Group();
+town.add(person);
+const headL = mkLayer(person);
+headL.group.position.set(0, HEAD_Y, 0);
+headL.group.scale.setScalar(TOWN_HEAD);
 const PROFILE = [
   [-0.55, -1.3], [-0.5, -0.9], [-0.62, -0.55], [-0.88, -0.15], [-0.98, 0.3], [-0.9, 0.75], [-0.62, 1.08],
   [-0.15, 1.22], [0.3, 1.15], [0.62, 0.92], [0.78, 0.58], [0.8, 0.36], [0.74, 0.24], [0.88, 0.02],
@@ -533,6 +542,385 @@ headL.group.add(new THREE.Line(skyGeo, skyMat));
 headL.group.traverse((c) => { c.frustumCulled = false; });
 
 /* ------------------------------------------------------------------ */
+/* Town (Network stage)                                                 */
+/* ------------------------------------------------------------------ */
+// A wireframe city around the person. Three landmarks carry the Network companies:
+// a tower of linked blocks under a coin, a stadium with a market board, and a casino.
+// The same town, small, sits on the globe of the closing screen.
+const TOWN_P = new V3(0, -1.6, 0);
+const MINI = 0.62;
+const MINI_N = new V3(0.5, 0.84, 0.22).normalize();
+const MINI_P = EARTH_C.clone().addScaledVector(MINI_N, ER - 0.2);
+const MINI_Q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), MINI_N);
+const townL = mkLayer(town); // landmarks and the nearest blocks; also the miniature on the closing globe
+const farL = mkLayer(town); // street grid and the rest of the skyline; Network stage only
+const bodyL = mkLayer(person);
+
+function shapeMats(L, boneO) {
+  return {
+    fill: reg(L, new THREE.MeshBasicMaterial({
+      color: 0x0a0e15, opacity: 0.93, side: THREE.DoubleSide, fog: false,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    })),
+    bone: lineMat(L, BONE, boneO),
+    dim: lineMat(L, BONE, boneO * 0.3),
+    ember: lineMat(L, EMBER, 0.95),
+  };
+}
+// Collects line segments (bone, dim, ember) and filled faces, then builds them as one group.
+function mkShape() {
+  const S = { bone: [], dim: [], ember: [], tris: [] };
+  S.seg = (a, b, to = S.bone) => to.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+  S.path = (pts, closed, to) => {
+    for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) S.seg(pts[i], pts[(i + 1) % pts.length], to);
+  };
+  S.quad = (a, b, c, d) => S.tris.push(...a, ...b, ...c, ...a, ...c, ...d);
+  // A box standing on y0, optionally turned about its vertical axis.
+  S.box = (cx, y0, cz, w, h, d, rot = 0, to) => {
+    const co = Math.cos(rot);
+    const si = Math.sin(rot);
+    const p = (x, z) => [cx + x * co + z * si, y0, cz - x * si + z * co];
+    const lo = [p(-w / 2, -d / 2), p(w / 2, -d / 2), p(w / 2, d / 2), p(-w / 2, d / 2)];
+    const hi = lo.map(([x, , z]) => [x, y0 + h, z]);
+    S.path(lo, true, to);
+    S.path(hi, true, to);
+    for (let k = 0; k < 4; k++) {
+      S.seg(lo[k], hi[k], to);
+      S.quad(lo[k], lo[(k + 1) % 4], hi[(k + 1) % 4], hi[k]);
+    }
+    S.quad(hi[0], hi[1], hi[2], hi[3]);
+  };
+  // Sections stacked along y, [y, cx, cz, rx, rz], joined into a tube with n sides.
+  S.loft = (secs, n, to) => {
+    const rings = secs.map(([y, cx, cz, rx, rz]) => Array.from({ length: n }, (_, k) => {
+      const a = ((k + 0.5) / n) * Math.PI * 2;
+      return [cx + Math.cos(a) * rx, y, cz + Math.sin(a) * rz];
+    }));
+    rings.forEach((r) => S.path(r, true, to));
+    for (let i = 0; i < rings.length - 1; i++) {
+      for (let k = 0; k < n; k++) {
+        S.seg(rings[i][k], rings[i + 1][k], to);
+        S.quad(rings[i][k], rings[i][(k + 1) % n], rings[i + 1][(k + 1) % n], rings[i + 1][k]);
+      }
+    }
+  };
+  S.build = (parent, M) => {
+    const g = new THREE.Group();
+    if (S.tris.length) {
+      const fill = new THREE.Mesh(segGeo(S.tris), M.fill);
+      fill.renderOrder = 4;
+      g.add(fill);
+    }
+    for (const k of ['dim', 'bone', 'ember']) {
+      if (!S[k].length) continue;
+      const l = new THREE.LineSegments(segGeo(S[k]), M[k]);
+      l.renderOrder = 5;
+      g.add(l);
+    }
+    parent.add(g);
+    return g;
+  };
+  return S;
+}
+const circlePts = (r, n, f) => Array.from({ length: n }, (_, k) => {
+  const a = (k / n) * Math.PI * 2;
+  return f(Math.cos(a) * r, Math.sin(a) * r);
+});
+
+const townM = shapeMats(townL, 0.85);
+const TOWN_PT = []; // point materials in the town, so their size can follow the town's scale
+const townPts = (L, color, size, opacity = 1) => {
+  const m = glowMat(L, color, size, opacity);
+  m.userData.size = size;
+  TOWN_PT.push(m);
+  return m;
+};
+const HEAD_PT = headL.mats.filter((m) => m.isPointsMaterial);
+HEAD_PT.forEach((m) => { m.userData.size = m.size; });
+
+// Body: the neck meets the open end of the head profile. The person faces +X, like the head.
+{
+  const b = mkShape();
+  b.loft([
+    [1.478, 0, 0, 0.034, 0.036], [1.415, 0, 0, 0.04, 0.05], [1.385, 0, 0, 0.07, 0.205], [1.24, 0.01, 0, 0.09, 0.175],
+    [1.02, 0.005, 0, 0.068, 0.13], [0.9, 0, 0, 0.078, 0.15], [0.8, 0, 0, 0.07, 0.145],
+  ], 8);
+  for (const d of [1, -1]) {
+    b.loft([[0.82, 0, 0.075 * d, 0.062, 0.068], [0.46, 0.005, 0.075 * d, 0.045, 0.048], [0.07, -0.005, 0.075 * d, 0.03, 0.032], [0, 0.025, 0.075 * d, 0.055, 0.036]], 6);
+    b.loft([[1.37, 0, 0.215 * d, 0.042, 0.04], [1.1, -0.005, 0.245 * d, 0.032, 0.03], [0.86, 0.02, 0.262 * d, 0.024, 0.023], [0.76, 0.03, 0.265 * d, 0.014, 0.026]], 6);
+  }
+  const g = b.build(bodyL.group, shapeMats(bodyL, 0.8));
+  g.position.x = -0.021;
+}
+
+// Skyline. Blocks are laid on a street grid, leaving the square and the three landmark plots clear.
+const PLOT = { yuga: [-1.4, -2.7], predictex: [2.2, -0.9], gains: [-2.0, 1.5] };
+const rise = []; // [group, start, end]: each rises from the ground over that part of the timeline
+{
+  const trnd = rng(41);
+  const keepOut = [[0, 0, 1.75], [...PLOT.yuga, 1.1], [...PLOT.predictex, 1.85], [...PLOT.gains, 1.7]];
+  const bands = [mkShape(), mkShape(), mkShape()];
+  for (let i = -6; i <= 6; i++) {
+    for (let j = -6; j <= 6; j++) {
+      const cx = i * 1.5 + (trnd() - 0.5) * 0.22;
+      const cz = j * 1.5 + (trnd() - 0.5) * 0.22;
+      const w = 0.7 + trnd() * 0.45;
+      const d = 0.7 + trnd() * 0.45;
+      const tall = Math.pow(trnd(), 1.8);
+      const extra = trnd();
+      const dist = Math.hypot(cx, cz);
+      if (dist > 9.3 || cz > 5.3 || trnd() < 0.1) continue;
+      if (keepOut.some(([x, z, r]) => Math.hypot(cx - x, cz - z) < r + 0.5)) continue;
+      // An avenue runs back from the square, so the person stands against open ground.
+      if (Math.abs(cx) < 1 && cz < 0) continue;
+      // Tall at the back, slabs in front, so nothing stands between the viewer and the square.
+      const h = cz > 2.3 ? 0.1 + tall * 0.22 : (0.45 + tall * 2.3) * (cz < -2 ? 1 : cz < 1 ? 0.8 : 0.45);
+      const S = bands[dist < 3.3 ? 0 : dist < 6.4 ? 1 : 2];
+      S.box(cx, 0, cz, w, h, d);
+      for (let y = 0.42; y < h - 0.2; y += 0.42) {
+        S.path([[cx - w / 2, y, cz - d / 2], [cx + w / 2, y, cz - d / 2], [cx + w / 2, y, cz + d / 2], [cx - w / 2, y, cz + d / 2]], true, S.dim);
+      }
+      if (h > 1.5 && extra < 0.5) {
+        S.box(cx, h, cz, w * 0.58, h * 0.26, d * 0.58);
+        if (extra < 0.25) S.seg([cx, h * 1.26, cz], [cx, h * 1.26 + 0.45, cz]);
+      }
+    }
+  }
+  // The square the person stands in.
+  bands[0].path(circlePts(1.2, 48, (x, z) => [x, 0.01, z]), true, bands[0].dim);
+  bands[0].path(circlePts(0.46, 28, (x, z) => [x, 0.01, z]), true, bands[0].ember);
+  rise.push([bands[0].build(townL.group, townM), 5.12, 5.4]);
+  rise.push([bands[1].build(farL.group, shapeMats(farL, 0.5)), 5.16, 5.46]);
+  rise.push([bands[2].build(farL.group, shapeMats(farL, 0.24)), 5.2, 5.5]);
+
+  // Street grid, fading out towards the edge of town.
+  const pos = [];
+  const col = [];
+  const E = 10.5;
+  const stepG = 0.75;
+  const fade = (x, z) => 1 - sramp(Math.hypot(x, z), 3.5, E);
+  for (let a = -E; a <= E + 0.01; a += stepG) {
+    for (let b = -E; b < E - 0.01; b += stepG) {
+      for (const [x0, z0, x1, z1] of [[a, b, a, b + stepG], [b, a, b + stepG, a]]) {
+        pos.push(x0, 0, z0, x1, 0, z1);
+        const f0 = fade(x0, z0);
+        const f1 = fade(x1, z1);
+        col.push(f0, f0, f0, f1, f1, f1);
+      }
+    }
+  }
+  const g = segGeo(pos);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const grid = new THREE.LineSegments(g, lineMat(farL, BONE, 0.26, { vertexColors: true }));
+  grid.renderOrder = 3;
+  farL.group.add(grid);
+}
+
+// Landmarks. Each has an empty object where its company label is pinned.
+const landmark = {};
+const mkLandmark = (id, start, end) => {
+  const g = new THREE.Group();
+  g.position.set(PLOT[id][0], 0, PLOT[id][1]);
+  townL.group.add(g);
+  rise.push([g, start, end]);
+  landmark[id] = new THREE.Object3D();
+  g.add(landmark[id]);
+  return g;
+};
+
+// Yuga Labs: a tower of linked blocks with a coin on top.
+const coin = new THREE.Group();
+{
+  const g = mkLandmark('yuga', 5.2, 5.48);
+  const t = mkShape();
+  const B = 0.62;
+  const GAP = 0.1;
+  for (let i = 0; i < 4; i++) {
+    const y0 = i * (B + GAP);
+    t.box(0, y0, 0, B, B, B, i * 0.22);
+    if (i < 3) {
+      for (const [x, z] of [[-0.12, -0.12], [0.12, -0.12], [0.12, 0.12], [-0.12, 0.12]]) t.seg([x, y0 + B, z], [x, y0 + B + GAP, z], t.ember);
+    }
+  }
+  const top = 4 * B + 3 * GAP;
+  const R = 0.5;
+  t.seg([0, top, 0], [0, top + 0.16, 0], t.ember);
+  t.build(g, townM);
+
+  const c = mkShape();
+  const P = (x, y) => [x * R, y * R, 0];
+  c.path(circlePts(1, 40, P), true, c.ember);
+  c.path(circlePts(0.84, 40, P), true, c.ember);
+  // The coin's mark: a B with two strokes through it.
+  const k = 0.56;
+  const lobe = (cx, cy) => Array.from({ length: 11 }, (_, i) => {
+    const a = Math.PI / 2 - (i / 10) * Math.PI;
+    return P((cx + Math.cos(a) * 0.25) * k, (cy + Math.sin(a) * 0.25) * k);
+  });
+  c.path([P(-0.44 * k, 0.5 * k), ...lobe(0.04, 0.25), P(-0.3 * k, 0)], false, c.ember);
+  c.path([P(-0.3 * k, 0), ...lobe(0.12, -0.25), P(-0.44 * k, -0.5 * k)], false, c.ember);
+  for (const x of [-0.3, -0.24]) c.seg(P(x * k, 0.5 * k), P(x * k, -0.5 * k), c.ember);
+  for (const x of [-0.14, 0.06]) {
+    c.seg(P(x * k, 0.5 * k), P(x * k, 0.7 * k), c.ember);
+    c.seg(P(x * k, -0.5 * k), P(x * k, -0.7 * k), c.ember);
+  }
+  const rim = circlePts(1, 40, P);
+  for (let i = 1; i < rim.length - 1; i++) c.tris.push(...rim[0], ...rim[i], ...rim[i + 1]);
+  c.build(coin, townM);
+  coin.position.y = top + 0.16 + R;
+  g.add(coin);
+  landmark.yuga.position.set(0, top + 0.16 + R * 2, 0);
+}
+
+// PredictEX: a stadium, and behind it a board showing the market on the game.
+const chartGeo = new THREE.BufferGeometry();
+const CHART_N = 13;
+{
+  const g = mkLandmark('predictex', 5.24, 5.5);
+  const t = mkShape();
+  const n = 28;
+  const ring = (rx, rz, y) => circlePts(1, n, (x, z) => [x * rx, y, z * rz]);
+  const base = ring(1.08, 0.8, 0);
+  const rimTop = ring(1.2, 0.92, 0.5);
+  const inner = ring(0.76, 0.48, 0.1);
+  t.path(base, true);
+  t.path(rimTop, true);
+  t.path(inner, true);
+  for (let k = 0; k < n; k++) {
+    const q = (k + 1) % n;
+    t.quad(base[k], base[q], rimTop[q], rimTop[k]);
+    t.quad(rimTop[k], rimTop[q], inner[q], inner[k]);
+    if (k % 2 === 0) { t.seg(base[k], rimTop[k], t.dim); t.seg(rimTop[k], inner[k], t.dim); }
+  }
+  const py = 0.1;
+  t.path([[-0.52, py, -0.27], [0.52, py, -0.27], [0.52, py, 0.27], [-0.52, py, 0.27]], true, t.ember);
+  t.seg([0, py, -0.27], [0, py, 0.27], t.ember);
+  t.path(circlePts(0.11, 14, (x, z) => [x, py, z]), true, t.ember);
+  // Board on two masts.
+  const bz = -1.08;
+  for (const x of [-0.6, 0.6]) t.seg([x, 0, bz], [x, 1.2, bz]);
+  t.box(0, 1.2, bz, 1.72, 1.0, 0.06);
+  const fz = bz + 0.04;
+  t.seg([-0.72, 1.78, fz], [0.72, 1.78, fz], t.dim);
+  t.seg([-0.72, 1.44, fz], [0.72, 1.44, fz], t.dim);
+  // Odds bar: the filled part is the market's price for one side.
+  t.path([[-0.72, 1.27, fz], [0.72, 1.27, fz], [0.72, 1.36, fz], [-0.72, 1.36, fz]], true);
+  t.seg([0.2, 1.27, fz], [0.2, 1.36, fz], t.ember);
+  t.build(g, townM);
+  const bar = new THREE.Mesh(
+    segGeo([-0.72, 1.27, fz, 0.2, 1.27, fz, 0.2, 1.36, fz, -0.72, 1.27, fz, 0.2, 1.36, fz, -0.72, 1.36, fz]),
+    reg(townL, new THREE.MeshBasicMaterial({ color: EMBER, opacity: 0.6, side: THREE.DoubleSide, fog: false, depthWrite: false })),
+  );
+  bar.renderOrder = 5;
+  g.add(bar);
+  // Price line, redrawn over and over.
+  const ys = [1.5, 1.6, 1.53, 1.68, 1.62, 1.8, 1.72, 1.9, 1.84, 1.98, 1.92, 2.06, 2.1];
+  chartGeo.setFromPoints(ys.map((y, i) => new V3(-0.72 + (i / (CHART_N - 1)) * 1.44, y, fz)));
+  const chart = new THREE.Line(chartGeo, townM.ember);
+  chart.renderOrder = 5;
+  g.add(chart);
+  landmark.predictex.position.set(0, 2.2, bz);
+}
+
+// Gains: a casino with a lit 777 sign and a pair of dice turning above it.
+const dice = [];
+const bulbMats = [];
+{
+  const g = mkLandmark('gains', 5.28, 5.52);
+  const t = mkShape();
+  const fz = 0.575;
+  t.box(0, 0, 0, 1.9, 0.7, 1.15);
+  t.box(0, 0.7, -0.1, 1.3, 0.32, 0.8);
+  for (const x of [-0.78, -0.5, 0.5, 0.78]) t.seg([x, 0, fz + 0.002], [x, 0.7, fz + 0.002], t.dim);
+  t.seg([-0.95, 0.56, fz + 0.002], [0.95, 0.56, fz + 0.002], t.dim);
+  const arch = Array.from({ length: 13 }, (_, i) => {
+    const a = Math.PI - (i / 12) * Math.PI;
+    return [Math.cos(a) * 0.24, 0.26 + Math.sin(a) * 0.24, fz + 0.002];
+  });
+  t.path([[-0.24, 0, fz + 0.002], ...arch, [0.24, 0, fz + 0.002]], false, t.ember);
+  // Sign on the roof.
+  const sz = 0.3;
+  const y0 = 1.14;
+  const y1 = 1.76;
+  for (const x of [-0.5, 0.5]) t.seg([x, 1.02, sz], [x, y0, sz]);
+  t.box(0, y0, sz, 1.5, y1 - y0, 0.05);
+  const s7 = sz + 0.03;
+  for (const cx of [-0.44, 0, 0.44]) {
+    t.seg([cx - 0.14, 1.63, s7], [cx + 0.14, 1.63, s7], t.ember);
+    t.seg([cx + 0.14, 1.63, s7], [cx - 0.04, 1.26, s7], t.ember);
+    t.seg([cx + 0.1, 1.63, s7], [cx - 0.08, 1.26, s7], t.ember);
+  }
+  t.build(g, townM);
+  // Bulbs round the sign, in two sets that take turns.
+  const sets = [[], []];
+  let nb = 0;
+  const bulb = (x, y) => sets[nb++ % 2].push(x, y, s7);
+  for (let x = -0.75; x <= 0.751; x += 0.125) { bulb(x, y1); }
+  for (let y = y1 - 0.124; y >= y0 + 0.01; y -= 0.124) { bulb(0.75, y); }
+  for (let x = 0.75; x >= -0.751; x -= 0.125) { bulb(x, y0); }
+  for (let y = y0 + 0.124; y <= y1 - 0.01; y += 0.124) { bulb(-0.75, y); }
+  for (const a of sets) {
+    const m = townPts(townL, 0xffd9a0, 0.075, 1);
+    const p = new THREE.Points(segGeo(a), m);
+    p.renderOrder = 6;
+    g.add(p);
+    bulbMats.push(m);
+  }
+  // Dice.
+  const pipM = townPts(townL, 0xffffff, 0.05, 1);
+  const D = 0.26;
+  const pat = [[], [[0, 0]], [[-1, -1], [1, 1]], [[-1, -1], [0, 0], [1, 1]], [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+    [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]], [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, 0], [1, 0]]];
+  // Opposite faces of a die add up to seven.
+  const faces = [[1, (u, v) => [0.5, u, v]], [6, (u, v) => [-0.5, u, v]], [2, (u, v) => [u, 0.5, v]],
+    [5, (u, v) => [u, -0.5, v]], [3, (u, v) => [u, v, 0.5]], [4, (u, v) => [u, v, -0.5]]];
+  for (const [x, y, ph] of [[-0.24, 2.14, 0.4], [0.26, 2.24, 2.1]]) {
+    const die = new THREE.Group();
+    const s = mkShape();
+    s.box(0, -D / 2, 0, D, D, D);
+    s.build(die, townM);
+    const pips = [];
+    for (const [nPips, f] of faces) {
+      for (const [u, v] of pat[nPips]) pips.push(...f(u * 0.27, v * 0.27).map((q) => q * D * 1.02));
+    }
+    const p = new THREE.Points(segGeo(pips), pipM);
+    p.renderOrder = 6;
+    die.add(p);
+    die.position.set(x, y, sz);
+    g.add(die);
+    dice.push({ die, ph });
+  }
+  landmark.gains.position.set(0, 2.44, sz);
+}
+
+// Lines from the chip in the person's head to each landmark, with a pulse running along each.
+const LINK_SEG = 40;
+const linkArcs = [];
+const linkPkPos = new Float32Array(3 * 3);
+const linkPkGeo = new THREE.BufferGeometry();
+linkPkGeo.setAttribute('position', new THREE.BufferAttribute(linkPkPos, 3));
+{
+  const m = lineMat(townL, EMBER, 0.6, { blending: THREE.AdditiveBlending });
+  const from = new V3(-0.02, HEAD_Y + 0.15, 0);
+  for (const id of ['yuga', 'predictex', 'gains']) {
+    const to = landmark[id].position.clone().add(landmark[id].parent.position);
+    const mid = from.clone().lerp(to, 0.5);
+    mid.y = Math.max(from.y, to.y) + 0.9 + from.distanceTo(to) * 0.12;
+    const pts = new THREE.QuadraticBezierCurve3(from, mid, to).getPoints(LINK_SEG);
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    g.setDrawRange(0, 0);
+    const l = new THREE.Line(g, m);
+    l.renderOrder = 6;
+    townL.group.add(l);
+    linkArcs.push({ g, pts });
+  }
+  const pk = new THREE.Points(linkPkGeo, townPts(townL, 0xffffff, 0.11, 1));
+  pk.renderOrder = 7;
+  townL.group.add(pk);
+}
+town.traverse((c) => { c.frustumCulled = false; });
+
+/* ------------------------------------------------------------------ */
 /* Jet (Earth stage)                                                    */
 /* ------------------------------------------------------------------ */
 // An uncrewed fighter in wireframe. Nose along +X, wings along Z, fin along +Y.
@@ -594,8 +982,8 @@ const KEYS = [
   [4.0, 0, 2.4, 15.5, 0, -4.4, 0],
   [4.3, 0.9, -1.2, 10.5, 0, -1.3, 4],
   [4.9, 0.4, -1.3, 10.1, 0, -1.3, 4],
-  [5.3, 0, 3.6, 18.5, 0, -5.4, 0],
-  [6.0, 0, 5, 22, 0, -6, 0],
+  [5.36, 0, 5.0, 12.8, 0, -0.5, 0],
+  [5.9, 0.9, 4.7, 12.4, 0, -0.5, 0],
   [6.6, 0, 10, 36, 0, -8.5, 0],
   [7.0, 0, 10, 36, 0, -8.5, 0],
 ];
@@ -788,6 +1176,7 @@ function anchorWorld(c, st, narrow) {
     return craft.localToWorld(anchorTmp.set(a.wing === 'left' ? -reachOut : reachOut, 0, 0));
   }
   if (a.type === 'jet') return jet.localToWorld(anchorTmp.set(0, 0.1, 0));
+  if (a.type === 'landmark') return landmark[c.id].getWorldPosition(anchorTmp);
   if (a.type === 'hull') {
     return hullA.localToWorld(anchorTmp.set(0.87, 0.9, 0.44));
   }
@@ -830,12 +1219,12 @@ function placeTiles(s, st) {
           const at = (sd) => clamp(sd > 0 ? ax + reach : ax - reach - c.w, m, maxL);
           const clear = (sd, x) => (sd > 0 ? x - ax : ax - (x + c.w));
           let L = at(side);
-          if (clear(side, L) < 10) {
+          if (clear(side, L) < 10 && !c.stack) {
             const alt = at(-side);
             if (clear(-side, alt) > clear(side, L)) L = alt;
           }
           const yMax = narrow ? (copyTop[c.stage] || H) - c.h / 2 - 14 : H - 60;
-          let ty = clamp(ay + (narrow ? c.dy * 0.7 : c.dy), narrow ? 76 : 90, Math.max(100, yMax));
+          let ty = clamp(ay + (narrow ? c.mdy ?? c.dy * 0.7 : c.dy), narrow ? 76 : 90, Math.max(100, yMax));
           // A label hung below-left of its anchor opens its description upward. In a short window,
           // lower the label so the description clears the header, without reaching the stage copy.
           if (!narrow && c.dy > 0 && L + c.w <= ax) {
@@ -933,7 +1322,7 @@ function update(s, dt) {
     const hot = ramp(e, 0.97, 1) * (0.7 + 0.3 * Math.sin(time * 5 + b.ph * 3));
     b.ledMat.color.copy(ledDim).lerp(ledHot, hot);
   }
-  const satO = 1 - win(s, 4.0, 4.2, 5.05, 5.3);
+  const satO = 1 - win(s, 4.0, 4.2, 6.02, 6.3);
   setO(bladeL, satO);
   setO(frameL, win(s, 1.05, 1.35, 2.02, 2.2));
 
@@ -974,7 +1363,7 @@ function update(s, dt) {
   starL.group.rotation.x = s * 0.02;
 
   /* earth */
-  const earthO = Math.max(win(s, 2.62, 3.0, 4.0, 4.2), sramp(s, 5.0, 5.25));
+  const earthO = Math.max(win(s, 2.62, 3.0, 4.0, 4.2), sramp(s, 5.92, 6.25));
   setO(earthL, earthO);
   rimMat.uniforms.o.value = earthO;
   earthSpin.quaternion.copy(qAmericas).slerp(qAsia, sramp(s, 4.2, 5.0));
@@ -1026,8 +1415,8 @@ function update(s, dt) {
   }
 
   /* network arcs */
-  const arcDraw = ramp(s, 5.2, 5.62);
-  setO(arcL, sramp(s, 5.15, 5.25));
+  const arcDraw = ramp(s, 6.05, 6.5);
+  setO(arcL, sramp(s, 6.0, 6.12));
   for (let i = 0; i < arcs.length; i++) {
     const a = arcs[i];
     const d = easeOut(clamp(arcDraw * 1.6 - (i / arcs.length) * 0.6));
@@ -1038,15 +1427,52 @@ function update(s, dt) {
   }
   arcPkGeo.attributes.position.needsUpdate = true;
 
+  /* town: scaled up to the head alone for the Mind stage, a city for the Network stage,
+     then small on the globe for the closing screen */
+  const toCity = sramp(s, 4.9, 5.36);
+  const toGlobe = sramp(s, 5.88, 6.4);
+  const townS = Math.pow(1 / TOWN_HEAD, 1 - toCity) * Math.pow(MINI, toGlobe);
+  town.scale.setScalar(townS);
+  town.position.copy(HEAD_CLOSE).lerp(tmp.set(TOWN_P.x, TOWN_P.y + HEAD_Y, TOWN_P.z), toCity);
+  town.position.y -= HEAD_Y * Math.pow(1 / TOWN_HEAD, 1 - toCity);
+  town.position.lerp(MINI_P, toGlobe);
+  town.quaternion.copy(IDENT).slerp(MINI_Q, toGlobe);
+  // The head keeps turning as in the Mind stage, then the person settles into a three-quarter view.
+  person.rotation.y = mix(-0.32 + (Math.min(s, 4.9) - 4.5) * 0.5, -0.62, sramp(s, 4.9, 5.4)) + px * 0.12;
+  const townO = sramp(s, 5.1, 5.3);
+  setO(bodyL, sramp(s, 4.93, 5.1));
+  setO(townL, townO);
+  setO(farL, townO * (1 - sramp(s, 5.86, 6.04)));
+  for (const m of TOWN_PT) m.size = m.userData.size * townS;
+  for (const m of HEAD_PT) m.size = m.userData.size * townS * TOWN_HEAD;
+  if (townO > 0.004) {
+    for (const [g, a, b] of rise) g.scale.y = Math.max(0.001, easeOut(ramp(s, a, b)));
+    const t = reducedMotion ? 0 : time;
+    coin.rotation.y = Math.sin(t * 0.7) * 0.55;
+    for (const { die, ph } of dice) die.rotation.set(t * 0.5 + ph, t * 0.37 + ph * 2, 0.3);
+    const blink = reducedMotion ? 1 : Math.floor(time * 2.2) % 2;
+    bulbMats[0].opacity = townO * (blink ? 1 : 0.22);
+    bulbMats[1].opacity = townO * (blink ? 0.22 : 1);
+    chartGeo.setDrawRange(0, reducedMotion ? CHART_N : Math.min(CHART_N, 2 + Math.floor(((time * 0.2) % 1) * CHART_N * 1.7)));
+    const linkDraw = ramp(s, 5.4, 5.6);
+    for (let i = 0; i < linkArcs.length; i++) {
+      const a = linkArcs[i];
+      const d = easeOut(clamp(linkDraw * 1.4 - i * 0.2));
+      a.g.setDrawRange(0, Math.floor(d * (LINK_SEG + 1)));
+      const p = a.pts[clamp(Math.floor(((time * 0.35 + i * 0.37) % 1) * d * LINK_SEG), 0, LINK_SEG)];
+      linkPkPos[i * 3] = p.x; linkPkPos[i * 3 + 1] = p.y; linkPkPos[i * 3 + 2] = p.z;
+    }
+    linkPkGeo.attributes.position.needsUpdate = true;
+  }
+
   /* head */
-  const headO = win(s, 4.12, 4.32, 4.88, 5.05);
+  const headO = sramp(s, 4.12, 4.32);
   setO(headL, headO);
   if (headO > 0.004) {
-    headL.group.rotation.y = -0.32 + (s - 4.5) * 0.5 + px * 0.12;
     const seat = easeOut(ramp(s, 4.3, 4.5));
     chip.position.copy(CHIP_POS);
     chip.position.y += (1 - seat) * 1.7;
-    chip.rotation.set(0, -headL.group.rotation.y, 0.16);
+    chip.rotation.set(0, -person.rotation.y, 0.16);
     const live = sramp(s, 4.46, 4.56);
     for (let k = 0; k < chipRings.length; k++) {
       const ph = reducedMotion ? 0.35 : (time * 0.55 + k * 0.5) % 1;
@@ -1091,7 +1517,8 @@ function update(s, dt) {
   if (!isDesktop()) dist = Math.max(dist, 1.24);
   // Closing screen: the globe moves aside (left on desktop, up on phones) to make room for the portfolio list.
   const closeK = sramp(s, 6.0, 6.55);
-  if (!isDesktop()) dist *= 1 + 0.22 * closeK;
+  const cityK = win(s, 4.95, 5.36, 5.9, 6.2);
+  if (!isDesktop()) dist *= 1 + 0.22 * closeK + 0.1 * cityK;
   camPos.sub(camTgt).multiplyScalar(dist).add(camTgt);
   const shake = reducedMotion ? 0 : win(s, 2.2, 2.3, 2.4, 2.5) * 0.045;
   camera.position.set(
@@ -1102,9 +1529,10 @@ function update(s, dt) {
   camera.lookAt(camTgt);
   // Shift the picture so the object sits clear of the copy.
   if (isDesktop()) {
-    setShift(Math.round(window.innerWidth * (-0.13 + 0.33 * closeK)), Math.round(window.innerHeight * 0.07 * closeK));
+    // The town is wider than the other models, so it sits nearer the middle.
+    setShift(Math.round(window.innerWidth * (-0.13 + 0.04 * cityK + 0.33 * closeK)), Math.round(window.innerHeight * 0.07 * closeK));
   } else {
-    const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 4.1, 4.3, 4.9, 5.05) * 0.07;
+    const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 4.1, 4.3, 4.9, 5.05) * 0.07 - cityK * 0.02;
     setShift(Math.round(window.innerWidth * k), Math.round(window.innerHeight * (0.13 + 0.15 * closeK)));
   }
   camera.updateMatrixWorld(true);
