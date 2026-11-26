@@ -1002,10 +1002,11 @@ function update(s, dt) {
     beamPkGeo.attributes.position.needsUpdate = true;
   }
 
-  /* jet: flies in over the globe for the Earth stage */
-  const jetO = win(s, 3.36, 3.5, 3.92, 4.05);
-  setO(jetL, jetO);
-  if (jetO > 0.004) {
+  /* jet: flies in over the globe for the Earth stage, then circles the globe on the closing screen */
+  const jetEarth = win(s, 3.36, 3.5, 3.92, 4.05);
+  const jetClose = sramp(s, 6.45, 6.75);
+  setO(jetL, Math.max(jetEarth, jetClose));
+  if (jetEarth > 0.004) {
     const small = !isDesktop();
     const along = -(1 - easeOut(ramp(s, 3.34, 3.66))) * 5 + (s - 3.7) * 1.1;
     const wob = reducedMotion ? 0 : Math.sin(time * 0.8);
@@ -1016,6 +1017,12 @@ function update(s, dt) {
     );
     jet.rotation.set(0.85 + wob * 0.06, -0.22, 0.2);
     jet.scale.setScalar(small ? 1 : 1.25);
+  } else if (jetClose > 0.004) {
+    // A level circle around the globe, banked into the turn; it passes in front of the globe and then behind it.
+    const th = reducedMotion ? 1.1 : time * 0.22 + 1.1;
+    jet.position.set(EARTH_C.x + Math.cos(th) * 8.4, EARTH_C.y + 1, EARTH_C.z + Math.sin(th) * 8.4);
+    jet.rotation.set(0.62, -(th + Math.PI / 2), 0);
+    jet.scale.setScalar(1.8);
   }
 
   /* network arcs */
