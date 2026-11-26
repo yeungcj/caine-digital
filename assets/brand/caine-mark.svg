@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <!-- C: an orbit, open to the right -->
+  <path d="M37.38 11.96A18 18 0 1 0 37.38 36.04" stroke="#ebe6da" stroke-width="3" stroke-linecap="round"/>
+  <!-- D: the body it holds -->
+  <path d="M19 14a10 10 0 0 1 0 20Z" fill="#ebe6da"/>
+  <!-- the thing in orbit -->
+  <circle cx="42" cy="24" r="2.9" fill="#ffa84a"/>
+</svg>
