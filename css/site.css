@@ -79,10 +79,6 @@ a { color: inherit; }
   text-transform: uppercase;
   color: var(--bone);
 }
-/* The larger lockup on the closing screen. */
-.mark.lg { display: flex; gap: clamp(20px, 1.8vw, 28px); }
-.mark.lg .logo { width: clamp(68px, 5.6vw, 86px); height: auto; aspect-ratio: 1; }
-.mark.lg .wm { font-size: clamp(18px, 1.5vw, 23px); }
 .stageinfo, .back {
   font-family: var(--mono);
   font-size: 11px;
@@ -233,7 +229,8 @@ h2 {
 .foot a { pointer-events: auto; text-underline-offset: 4px; }
 .foot a:hover { color: var(--bone); }
 .panel.close { padding-bottom: clamp(84px, 14vh, 150px); }
-.close .contact { margin-top: 26px; }
+.close .idx { margin-bottom: 12px; }
+.close .contact { margin-top: 0; }
 
 /* ---------- portfolio list (closing screen) ---------- */
 .portfolio {
@@ -525,9 +522,6 @@ body.doc { min-height: 100vh; }
   .mark { gap: 11px; }
   .logo { width: 38px; height: 38px; }
   .mark .wm { font-size: 10.5px; }
-  .mark.lg { gap: 16px; }
-  .mark.lg .logo { width: 56px; }
-  .mark.lg .wm { font-size: 15px; }
   .panel {
     flex-direction: column;
     justify-content: flex-end;
@@ -539,7 +533,7 @@ body.doc { min-height: 100vh; }
     background: linear-gradient(to top, rgba(6, 8, 12, 0.94) 0%, rgba(6, 8, 12, 0.78) 26%, rgba(6, 8, 12, 0) 52%);
   }
   .panel.close { padding-bottom: 64px; }
-  .close .contact { margin-top: 18px; }
+  .close .idx { margin-bottom: 8px; }
   /* z-index: `order` also changes paint order, which would put the list under the panel's scrim. */
   .portfolio { order: -1; z-index: 1; align-self: stretch; margin: 0 0 22px; }
   .portfolio .idx { margin-bottom: 10px; }
@@ -585,9 +579,6 @@ body.doc { min-height: 100vh; }
   .psec { margin-bottom: 4px; }
   .pitem { padding: 3px 8px 3px 3px; }
   .pitem .chip { width: 24px; height: 24px; font-size: 17px; }
-  /* The header already carries the mark; the room goes to the globe. */
-  .mark.lg { display: none; }
-  .close .contact { margin-top: 0; }
 }
 
 /* Tablets: the phone layout, with three companies to a row. */
