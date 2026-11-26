@@ -62,15 +62,27 @@ a { color: inherit; }
 .mark {
   display: inline-flex;
   align-items: center;
-  gap: 13px;
-  font-family: var(--serif);
-  font-size: 32px;
-  line-height: 1;
-  letter-spacing: 0.01em;
+  gap: 14px;
   text-decoration: none;
 }
-.logo { width: 36px; height: 36px; flex: none; display: block; }
-.logo.big { width: clamp(38px, 3.3vw, 50px); height: auto; aspect-ratio: 1; margin-bottom: 18px; }
+.logo { width: 46px; height: 46px; flex: none; display: block; }
+/* Wordmark: two rows of spaced capitals, kept inside the height of the mark beside them. */
+.mark .wm {
+  display: grid;
+  gap: 0.5em;
+  margin: 0;
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--bone);
+}
+/* The larger lockup on the closing screen. */
+.mark.lg { display: flex; gap: clamp(20px, 1.8vw, 28px); }
+.mark.lg .logo { width: clamp(68px, 5.6vw, 86px); height: auto; aspect-ratio: 1; }
+.mark.lg .wm { font-size: clamp(18px, 1.5vw, 23px); }
 .stageinfo, .back {
   font-family: var(--mono);
   font-size: 11px;
@@ -221,8 +233,7 @@ h2 {
 .foot a { pointer-events: auto; text-underline-offset: 4px; }
 .foot a:hover { color: var(--bone); }
 .panel.close { padding-bottom: clamp(84px, 14vh, 150px); }
-.close h2 { font-size: clamp(36px, 4.1vw, 62px); line-height: 1; }
-.close .contact { margin-top: 22px; }
+.close .contact { margin-top: 26px; }
 
 /* ---------- portfolio list (closing screen) ---------- */
 .portfolio {
@@ -491,8 +502,12 @@ body.doc { min-height: 100vh; }
 @media (max-width: 860px) {
   .rail { display: none; }
   .stageinfo #stageName { display: none; }
-  .mark { font-size: 26px; gap: 10px; }
-  .logo { width: 29px; height: 29px; }
+  .mark { gap: 11px; }
+  .logo { width: 38px; height: 38px; }
+  .mark .wm { font-size: 10.5px; }
+  .mark.lg { gap: 16px; }
+  .mark.lg .logo { width: 56px; }
+  .mark.lg .wm { font-size: 15px; }
   .panel {
     flex-direction: column;
     justify-content: flex-end;
@@ -504,10 +519,7 @@ body.doc { min-height: 100vh; }
     background: linear-gradient(to top, rgba(6, 8, 12, 0.94) 0%, rgba(6, 8, 12, 0.78) 26%, rgba(6, 8, 12, 0) 52%);
   }
   .panel.close { padding-bottom: 64px; }
-  .close .copy { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; }
-  .close .logo.big { width: 34px; margin: 0; }
-  .close h2 { font-size: 36px; }
-  .close .contact { grid-column: 1 / -1; justify-self: start; margin-top: 14px; }
+  .close .contact { margin-top: 18px; }
   /* z-index: `order` also changes paint order, which would put the list under the panel's scrim. */
   .portfolio { order: -1; z-index: 1; align-self: stretch; margin: 0 0 22px; }
   .portfolio .idx { margin-bottom: 10px; }
