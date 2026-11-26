@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three.module.min.js';
-import { STAGES, COMPANIES, CITIES, ARCS } from './data.js';
+import { STAGES, COMPANIES, SECTORS, CITIES, ARCS } from './data.js';
 
 const INK = 0x06080c;
 const BONE = 0xebe6da;
@@ -1050,13 +1050,28 @@ for (const c of COMPANIES) {
   leaders.append(c.line, c.dot);
 }
 
-// Closing screen: the whole portfolio as a list. Each entry opens the same description as its label does.
+// Closing screen: the whole portfolio as a list, grouped by sector and alphabetical inside each sector.
+// Each entry opens the same description as its label does.
 const plist = document.getElementById('plist');
-for (const c of COMPANIES) {
+const pcols = [0, 1].map(() => {
+  const col = document.createElement('div');
+  col.className = 'pcol';
+  plist.appendChild(col);
+  return col;
+});
+const sectorList = {};
+for (const sec of SECTORS) {
+  const group = document.createElement('section');
+  group.className = 'pgroup';
+  group.innerHTML = `<h3 class="psec">${sec.label.replace('&', '&amp;')}</h3><ul></ul>`;
+  pcols[sec.col].appendChild(group);
+  sectorList[sec.id] = group.lastChild;
+}
+for (const c of [...COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))) {
   const li = document.createElement('li');
   const badge = c.exited ? '<span class="badge">Exited</span>' : '';
   li.innerHTML = `<button class="pitem" type="button">${chipFor(c)}<span class="pt"><b>${c.name}${badge}</b><i>${c.tag}</i></span></button>`;
-  plist.appendChild(li);
+  sectorList[c.sector].appendChild(li);
   const item = li.firstChild;
   c.pitem = item;
   // Hover previews the description; a click keeps it open.
@@ -1076,6 +1091,8 @@ for (const c of COMPANIES) {
 // Label sizes and where each stage's copy starts, so labels can be kept clear of both.
 const copyTop = [];
 const rail = document.querySelector('.rail');
+const portfolio = document.querySelector('.portfolio');
+let portTop = 0; // top of the portfolio list on the closing screen, in px
 let railLeft = window.innerWidth;
 function measure() {
   for (const c of COMPANIES) {
@@ -1086,6 +1103,7 @@ function measure() {
   // Labels and descriptions stop short of the progress ticks on the right.
   const rr = rail.getBoundingClientRect();
   railLeft = rr.width ? rr.right - 34 : window.innerWidth;
+  portTop = portfolio.getBoundingClientRect().top;
   panels.forEach((p, i) => {
     const copy = p.querySelector('.copy');
     copyTop[i] = copy ? copy.getBoundingClientRect().top : window.innerHeight;
@@ -1518,7 +1536,22 @@ function update(s, dt) {
   // Closing screen: the globe moves aside (left on desktop, up on phones) to make room for the portfolio list.
   const closeK = sramp(s, 6.0, 6.55);
   const cityK = win(s, 4.95, 5.36, 5.9, 6.2);
-  if (!isDesktop()) dist *= 1 + 0.22 * closeK + 0.1 * cityK;
+  // On phones the globe sits in the space between the header and the portfolio list, sized to fit it.
+  const globeR = clamp((portTop - 60) * 0.345, 36, window.innerWidth * 0.24);
+  const globeY = portTop - 16 - globeR;
+  if (!isDesktop()) {
+    dist *= 1 + 0.1 * cityK;
+    if (closeK > 0) {
+      // Camera distance at which the globe is globeR px across its radius, as a multiple of the offset.
+      const want = (ER * window.innerHeight) / (2 * globeR * Math.tan((camera.fov * Math.PI) / 360));
+      const v = kA.copy(camPos).sub(camTgt);
+      const w = kB.copy(camTgt).sub(EARTH_C);
+      const vv = v.lengthSq();
+      const vw = v.dot(w);
+      const fit = (-vw + Math.sqrt(Math.max(0, vw * vw - vv * (w.lengthSq() - want * want)))) / vv;
+      dist = mix(dist, Math.max(dist, fit), closeK);
+    }
+  }
   camPos.sub(camTgt).multiplyScalar(dist).add(camTgt);
   const shake = reducedMotion ? 0 : win(s, 2.2, 2.3, 2.4, 2.5) * 0.045;
   camera.position.set(
@@ -1533,7 +1566,13 @@ function update(s, dt) {
     setShift(Math.round(window.innerWidth * (-0.13 + 0.04 * cityK + 0.33 * closeK)), Math.round(window.innerHeight * 0.07 * closeK));
   } else {
     const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 4.1, 4.3, 4.9, 5.05) * 0.07 - cityK * 0.02;
-    setShift(Math.round(window.innerWidth * k), Math.round(window.innerHeight * (0.13 + 0.15 * closeK)));
+    let sy = window.innerHeight * 0.13;
+    if (closeK > 0) {
+      camera.updateMatrixWorld(true);
+      const y0 = (1 - kA.copy(EARTH_C).project(camera).y) * 0.5 * window.innerHeight + (shiftY || 0);
+      sy = mix(sy, y0 - globeY, closeK);
+    }
+    setShift(Math.round(window.innerWidth * k), Math.round(sy));
   }
   camera.updateMatrixWorld(true);
   scene.updateMatrixWorld(true);
