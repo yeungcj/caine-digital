@@ -1,12 +1,13 @@
 // Scroll timeline. `len` is the scroll length of each stage in viewport heights (vh).
 export const STAGES = [
-  { id: 'hero', len: 100, label: '' },
-  { id: 'rack', len: 400, label: 'Intelligence' },
-  { id: 'orbit', len: 330, label: 'Orbit' },
-  { id: 'earth', len: 240, label: 'Earth' },
-  { id: 'mind', len: 240, label: 'Mind' },
-  { id: 'network', len: 240, label: 'Network' },
-  { id: 'close', len: 120, label: '' },
+  { id: 'hero', len: 100 },
+  { id: 'rack', len: 400 },
+  { id: 'orbit', len: 330 },
+  { id: 'earth', len: 240 },
+  { id: 'defence', len: 260 },
+  { id: 'mind', len: 240 },
+  { id: 'network', len: 240 },
+  { id: 'close', len: 120 },
 ];
 
 // `sector` is the id of one of SECTORS below; it groups the portfolio list on the closing screen.
@@ -15,13 +16,14 @@ export const STAGES = [
 // run off the screen. A blade anchor with `edge: 'left'` pins to the left edge of the rack instead of the right.
 // A panel anchor with `wing: 'left'` pins to the satellite's left solar panel instead of the right.
 // An lpu anchor pins to the chip that opens the Intelligence stage, and a rack anchor to the top of the rack.
-// A jet anchor pins to the aircraft that flies over the Earth stage, and a drone anchor to the quadcopter that lifts off beside it.
+// A jet anchor pins to the aircraft that crosses the sky of the Defence stage, and a drone anchor to the quadcopter
+// that the person on the ground is flying.
 // A landmark anchor pins to that company's building in the town of the Network stage.
 // On phones the model sits at the left of the screen, so rack and satellite labels go on the right there.
 // Optional fields:
 //   `at: [in0, in1, out0, out1]`  show the label only for part of its stage (stage positions, e.g. 2.14)
 //   `exited: true`                adds a small "Exited" badge
-//   `mdy: -24`                    a different `dy` on phones
+//   `mdy: -24`, `mside: 1`         a different `dy` or `side` on phones
 //   `stack: true`                 keep the preferred side even where the label then sits above its anchor
 //   `reach: 0.6`                  shorten (or lengthen) the leader line on desktop, as a multiple of the default
 //   `chipBg`, `pad`               logo tile background colour, and inset the logo inside the tile
@@ -88,37 +90,37 @@ export const COMPANIES = [
     anchor: { type: 'city', name: 'Los Angeles' }, side: 1, dy: 44,
   },
   {
-    id: 'anduril', name: 'Anduril', stage: 3, sector: 'space', tag: 'Defence technology',
+    id: 'anduril', name: 'Anduril', stage: 4, sector: 'space', tag: 'Defence technology',
     desc: 'Anduril Industries is a defence technology company based in Costa Mesa, California, founded in 2017 by Palmer Luckey and four partners. It builds autonomous aircraft, drones, undersea vehicles and missiles, run by its Lattice software, and sells them to the US military and its allies as finished products. Its Fury uncrewed fighter jet first flew in October 2025, and the US Air Force ordered it into production in June 2026.',
     url: 'https://www.anduril.com', logo: 'assets/logos/anduril.svg', chipBg: '#000',
-    anchor: { type: 'jet' }, side: 1, dy: -72, reach: 0.62,
+    anchor: { type: 'jet' }, side: 1, dy: -56, mdy: -44, reach: 0.62,
   },
   {
-    id: 'shieldai', name: 'Shield AI', stage: 3, sector: 'space', tag: 'Defence technology',
+    id: 'shieldai', name: 'Shield AI', stage: 4, sector: 'space', tag: 'Defence technology',
     desc: 'Shield AI is a defence technology company based in San Diego, founded in 2015 by Brandon Tseng, a former Navy SEAL, his brother Ryan Tseng and Andrew Reiter. Its Hivemind software is an AI pilot that flies drones without GPS or a radio link. It first flew on Nova, a quadcopter that searches buildings on its own, and now flies V-BAT, a drone that takes off and lands standing on its tail. X-BAT, an uncrewed fighter that takes off the same way, was unveiled in October 2025, and its first full-scale prototype was finished in November 2026.',
     url: 'https://shield.ai', logo: 'assets/logos/shieldai.svg', pad: true, chipBg: '#000',
-    anchor: { type: 'drone' }, side: -1, dy: -64, mdy: 48, reach: 0.62,
+    anchor: { type: 'drone' }, side: -1, mside: 1, stack: true, dy: -58, mdy: -52, reach: 0.5,
   },
   {
-    id: 'neuralink', name: 'Neuralink', stage: 4, sector: 'neuro', tag: 'Brain interface',
+    id: 'neuralink', name: 'Neuralink', stage: 5, sector: 'neuro', tag: 'Brain interface',
     desc: 'Neuralink builds brain-computer interfaces: a small implant, placed by a surgical robot, that reads neural activity through fine threads. Its first product, Telepathy, lets people with paralysis control computers and phones by thought, and has been in human trials since 2024. A second device, Blindsight, is in development to restore vision.',
     url: 'https://neuralink.com', logo: 'assets/logos/neuralink.png',
     anchor: { type: 'chip' }, side: -1, dy: -54,
   },
   {
-    id: 'yuga', name: 'Yuga Labs', stage: 5, sector: 'crypto', tag: 'Web3',
+    id: 'yuga', name: 'Yuga Labs', stage: 6, sector: 'crypto', tag: 'Web3',
     desc: 'Yuga Labs is the web3 studio that created Bored Ape Yacht Club in 2021, one of the best-known NFT collections. It also builds Otherside, a virtual world that runs in the browser, and the ApeChain network around the ApeCoin token. Holders own their characters and can license them commercially.',
     url: 'https://yuga.com', logo: 'assets/logos/yuga.png', pad: true,
     anchor: { type: 'landmark' }, side: -1, dy: -30, reach: 0.6,
   },
   {
-    id: 'predictex', name: 'PredictEX', stage: 5, sector: 'crypto', tag: 'Prediction markets',
+    id: 'predictex', name: 'PredictEX', stage: 6, sector: 'crypto', tag: 'Prediction markets',
     desc: 'PredictEX is an exchange for trading the outcomes of sporting events. Prices are set by the market rather than by a bookmaker, and positions can be traded while a game is in play. Trades settle on-chain in USDC on the Base network.',
     url: 'https://www.predictex.com', logo: 'assets/logos/predictex.png',
     anchor: { type: 'landmark' }, side: 1, dy: -44, stack: true,
   },
   {
-    id: 'gains', name: 'Gains', stage: 5, sector: 'crypto', tag: 'Social gaming',
+    id: 'gains', name: 'Gains', stage: 6, sector: 'crypto', tag: 'Social gaming',
     desc: 'Gains is a social casino for adults in the United States, based in Miami. Its games are played with free Gold Coins for entertainment, with separate Sweeps Coins used for sweepstakes prizes, and no purchase is needed to play. Availability varies by state.',
     url: 'https://gains.com', logo: 'assets/logos/gains.png',
     anchor: { type: 'landmark' }, side: -1, dy: 24, mdy: -24, stack: true,

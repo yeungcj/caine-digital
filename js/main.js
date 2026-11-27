@@ -446,11 +446,14 @@ beamL.group.children.forEach((c) => { c.frustumCulled = false; c.renderOrder = 5
 /* ------------------------------------------------------------------ */
 /* Head and chip                                                        */
 /* ------------------------------------------------------------------ */
-// The head belongs to a person who stands in the town of the Network stage. In the Mind stage the whole
-// town is scaled up so that only the head is in view, at the size and place it was modelled for.
+// The head belongs to one person, seen three times. In the Defence stage they stand on open ground flying a
+// drone. In the Mind stage everything is scaled up so that only the head is in view, at the size and place it
+// was modelled for. In the Network stage they stand in the town.
 const TOWN_HEAD = 0.1; // the head inside the town, relative to its close-up size
 const HEAD_Y = 1.6; // head centre above the ground, in town units
 const HEAD_CLOSE = new V3(0, -1.35, 4);
+const DEF_S = 1.55; // size of the standing figure in the Defence stage, in town units
+const DEF_HEAD = new V3(0, -0.72, 4); // where its head is then
 const town = new THREE.Group();
 scene.add(town);
 const person = new THREE.Group();
@@ -498,6 +501,8 @@ const linkGeo = new THREE.BufferGeometry().setFromPoints(links.flatMap(([a, b]) 
 linkGeo.setAttribute('color', new THREE.BufferAttribute(linkCol, 3));
 headL.group.add(new THREE.LineSegments(linkGeo, lineMat(headL, 0xffffff, 0.55, { vertexColors: true })));
 
+// The implant, its threads and its uplink fade in on their own, once the view has closed in on the head.
+const chipL = mkLayer(headL.group);
 const chip = new THREE.Group();
 const chipRings = [];
 {
@@ -514,41 +519,41 @@ const chipRings = [];
   // Solid body so the chip reads against the head lines behind it.
   const body = new THREE.Mesh(
     new THREE.PlaneGeometry(s * 2, s * 2),
-    reg(headL, new THREE.MeshBasicMaterial({ color: 0x0a0e15, opacity: 0.96, fog: false, depthWrite: false, depthTest: false })),
+    reg(chipL, new THREE.MeshBasicMaterial({ color: 0x0a0e15, opacity: 0.96, fog: false, depthWrite: false, depthTest: false })),
   );
   body.renderOrder = 6;
   const die = new THREE.Mesh(
     new THREE.PlaneGeometry(s * 1.12, s * 1.12),
-    reg(headL, new THREE.MeshBasicMaterial({ color: EMBER, opacity: 0.3, fog: false, depthWrite: false, depthTest: false })),
+    reg(chipL, new THREE.MeshBasicMaterial({ color: EMBER, opacity: 0.3, fog: false, depthWrite: false, depthTest: false })),
   );
   die.renderOrder = 7;
-  const lines = new THREE.LineSegments(segGeo(a), lineMat(headL, EMBER, 1, { depthTest: false }));
+  const lines = new THREE.LineSegments(segGeo(a), lineMat(chipL, EMBER, 1, { depthTest: false }));
   lines.renderOrder = 8;
-  const glow = new THREE.Points(segGeo([0, 0, 0]), glowMat(headL, EMBER, 0.95, 0.7, { depthTest: false }));
+  const glow = new THREE.Points(segGeo([0, 0, 0]), glowMat(chipL, EMBER, 0.95, 0.7, { depthTest: false }));
   glow.renderOrder = 9;
   chip.add(body, die, lines, glow);
   // Two rings that pulse outward once the chip is seated.
   const ringGeo = segGeo([-s, -s, 0, s, -s, 0, s, -s, 0, s, s, 0, s, s, 0, -s, s, 0, -s, s, 0, -s, -s, 0]);
   for (let k = 0; k < 2; k++) {
-    const m = lineMat(headL, EMBER, 0.9, { depthTest: false });
+    const m = lineMat(chipL, EMBER, 0.9, { depthTest: false });
     const r = new THREE.LineSegments(ringGeo, m);
     r.renderOrder = 8;
     chip.add(r);
     chipRings.push({ r, m });
   }
 }
-headL.group.add(chip);
+chipL.group.add(chip);
 const THREADS = 7;
 const threadTargets = neurD.map((d, i) => [d, i]).sort((a, b) => a[0] - b[0]).slice(0, THREADS).map(([, i]) => neur[i]);
 const threadPos = new Float32Array(THREADS * 6);
 const threadGeo = new THREE.BufferGeometry();
 threadGeo.setAttribute('position', new THREE.BufferAttribute(threadPos, 3));
-headL.group.add(new THREE.LineSegments(threadGeo, lineMat(headL, EMBER, 0.85)));
+chipL.group.add(new THREE.LineSegments(threadGeo, lineMat(chipL, EMBER, 0.85)));
 const skyPos = new Float32Array(6);
 const skyGeo = new THREE.BufferGeometry();
 skyGeo.setAttribute('position', new THREE.BufferAttribute(skyPos, 3));
-const skyMat = lineMat(headL, EMBER, 0.45, { blending: THREE.AdditiveBlending });
-headL.group.add(new THREE.Line(skyGeo, skyMat));
+const skyMat = lineMat(chipL, EMBER, 0.45, { blending: THREE.AdditiveBlending });
+chipL.group.add(new THREE.Line(skyGeo, skyMat));
 headL.group.traverse((c) => { c.frustumCulled = false; });
 
 /* ------------------------------------------------------------------ */
@@ -564,7 +569,9 @@ const MINI_P = EARTH_C.clone().addScaledVector(MINI_N, ER - 0.2);
 const MINI_Q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), MINI_N);
 const townL = mkLayer(town); // landmarks and the nearest blocks; also the miniature on the closing globe
 const farL = mkLayer(town); // street grid and the rest of the skyline; Network stage only
-const bodyL = mkLayer(person);
+const bodyL = mkLayer(person); // torso and legs
+const armL = mkLayer(person); // arms at the sides (Network stage)
+const holdL = mkLayer(person); // arms bent around a drone controller (Defence stage)
 
 function shapeMats(L, boneO) {
   return {
@@ -606,6 +613,27 @@ function mkShape() {
       const a = ((k + 0.5) / n) * Math.PI * 2;
       return [cx + Math.cos(a) * rx, y, cz + Math.sin(a) * rz];
     }));
+    S.skin(rings, to);
+  };
+  // A tube through the points [x, y, z, radius], with n sides. It may bend, but not run along z.
+  S.tube = (pts, n, to) => {
+    S.skin(pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 1)];
+      const c = pts[Math.min(pts.length - 1, i + 1)];
+      const d = new V3(c[0] - a[0], c[1] - a[1], c[2] - a[2]).normalize();
+      const u = new V3(d.y, -d.x, 0).normalize(); // d x Z
+      const v = new V3().crossVectors(d, u);
+      return Array.from({ length: n }, (_, k) => {
+        const t = ((k + 0.5) / n) * Math.PI * 2;
+        const cs = Math.cos(t) * p[3];
+        const sn = Math.sin(t) * p[3];
+        return [p[0] + u.x * cs + v.x * sn, p[1] + u.y * cs + v.y * sn, p[2] + u.z * cs + v.z * sn];
+      });
+    }), to);
+  };
+  // Joins a run of rings into a surface.
+  S.skin = (rings, to) => {
+    const n = rings[0].length;
     rings.forEach((r) => S.path(r, true, to));
     for (let i = 0; i < rings.length - 1; i++) {
       for (let k = 0; k < n; k++) {
@@ -645,22 +673,36 @@ const townPts = (L, color, size, opacity = 1) => {
   TOWN_PT.push(m);
   return m;
 };
-const HEAD_PT = headL.mats.filter((m) => m.isPointsMaterial);
+const HEAD_PT = [...headL.mats, ...chipL.mats].filter((m) => m.isPointsMaterial);
 HEAD_PT.forEach((m) => { m.userData.size = m.size; });
 
 // Body: the neck meets the open end of the head profile. The person faces +X, like the head.
+const CTRL_TIP = new V3(0.384, 1.3, 0); // top of the controller's aerial, in the person's frame
 {
   const b = mkShape();
+  const down = mkShape();
+  const hold = mkShape();
   b.loft([
     [1.478, 0, 0, 0.034, 0.036], [1.415, 0, 0, 0.04, 0.05], [1.385, 0, 0, 0.07, 0.205], [1.24, 0.01, 0, 0.09, 0.175],
     [1.02, 0.005, 0, 0.068, 0.13], [0.9, 0, 0, 0.078, 0.15], [0.8, 0, 0, 0.07, 0.145],
   ], 8);
   for (const d of [1, -1]) {
     b.loft([[0.82, 0, 0.075 * d, 0.062, 0.068], [0.46, 0.005, 0.075 * d, 0.045, 0.048], [0.07, -0.005, 0.075 * d, 0.03, 0.032], [0, 0.025, 0.075 * d, 0.055, 0.036]], 6);
-    b.loft([[1.37, 0, 0.215 * d, 0.042, 0.04], [1.1, -0.005, 0.245 * d, 0.032, 0.03], [0.86, 0.02, 0.262 * d, 0.024, 0.023], [0.76, 0.03, 0.265 * d, 0.014, 0.026]], 6);
+    down.loft([[1.37, 0, 0.215 * d, 0.042, 0.04], [1.1, -0.005, 0.245 * d, 0.032, 0.03], [0.86, 0.02, 0.262 * d, 0.024, 0.023], [0.76, 0.03, 0.265 * d, 0.014, 0.026]], 6);
+    // Upper arm down to the elbow, forearm forward and inward to the hand on the controller.
+    hold.tube([
+      [0, 1.37, 0.215 * d, 0.042], [0.005, 1.22, 0.24 * d, 0.034], [0.035, 1.085, 0.232 * d, 0.03],
+      [0.16, 1.075, 0.19 * d, 0.025], [0.27, 1.1, 0.15 * d, 0.021], [0.325, 1.115, 0.132 * d, 0.026],
+    ], 6);
+    hold.seg([0.37, 1.132, 0.07 * d], [0.37, 1.156, 0.07 * d]); // stick
   }
-  const g = b.build(bodyL.group, shapeMats(bodyL, 0.8));
-  g.position.x = -0.021;
+  hold.box(0.36, 1.1, 0, 0.1, 0.032, 0.25); // controller
+  hold.path([[0.335, 1.133, -0.035], [0.385, 1.133, -0.035], [0.385, 1.133, 0.035], [0.335, 1.133, 0.035]], true, hold.ember);
+  hold.seg([0.4, 1.132, 0], [0.405, 1.3, 0]); // aerial
+  for (const [S, L] of [[b, bodyL], [down, armL], [hold, holdL]]) S.build(L.group, shapeMats(L, 0.8)).position.x = -0.021;
+  const tip = new THREE.Points(segGeo([CTRL_TIP.x, CTRL_TIP.y, CTRL_TIP.z]), townPts(holdL, EMBER, 0.12, 0.9));
+  tip.renderOrder = 5;
+  holdL.group.add(tip);
 }
 
 // Skyline. Blocks are laid on a street grid, leaving the square and the three landmark plots clear.
@@ -699,9 +741,9 @@ const rise = []; // [group, start, end]: each rises from the ground over that pa
   // The square the person stands in.
   bands[0].path(circlePts(1.2, 48, (x, z) => [x, 0.01, z]), true, bands[0].dim);
   bands[0].path(circlePts(0.46, 28, (x, z) => [x, 0.01, z]), true, bands[0].ember);
-  rise.push([bands[0].build(townL.group, townM), 5.12, 5.4]);
-  rise.push([bands[1].build(farL.group, shapeMats(farL, 0.5)), 5.16, 5.46]);
-  rise.push([bands[2].build(farL.group, shapeMats(farL, 0.24)), 5.2, 5.5]);
+  rise.push([bands[0].build(townL.group, townM), 6.12, 6.4]);
+  rise.push([bands[1].build(farL.group, shapeMats(farL, 0.5)), 6.16, 6.46]);
+  rise.push([bands[2].build(farL.group, shapeMats(farL, 0.24)), 6.2, 6.5]);
 
   // Street grid, fading out towards the edge of town.
   const pos = [];
@@ -741,7 +783,7 @@ const mkLandmark = (id, start, end) => {
 // Yuga Labs: a tower of linked blocks with a coin on top.
 const coin = new THREE.Group();
 {
-  const g = mkLandmark('yuga', 5.2, 5.48);
+  const g = mkLandmark('yuga', 6.2, 6.48);
   const t = mkShape();
   const B = 0.62;
   const GAP = 0.1;
@@ -786,7 +828,7 @@ const coin = new THREE.Group();
 const chartGeo = new THREE.BufferGeometry();
 const CHART_N = 13;
 {
-  const g = mkLandmark('predictex', 5.24, 5.5);
+  const g = mkLandmark('predictex', 6.24, 6.5);
   const t = mkShape();
   const n = 28;
   const ring = (rx, rz, y) => circlePts(1, n, (x, z) => [x * rx, y, z * rz]);
@@ -836,7 +878,7 @@ const CHART_N = 13;
 const dice = [];
 const bulbMats = [];
 {
-  const g = mkLandmark('gains', 5.28, 5.52);
+  const g = mkLandmark('gains', 6.28, 6.52);
   const t = mkShape();
   const fz = 0.575;
   t.box(0, 0, 0, 1.9, 0.7, 1.15);
@@ -984,10 +1026,10 @@ const lpuRings = [];
 }
 
 /* ------------------------------------------------------------------ */
-/* Quadcopter (Earth stage)                                             */
+/* Quadcopter (Defence stage)                                           */
 /* ------------------------------------------------------------------ */
 // A small four-rotor drone with guarded propellers, skids and a camera under its nose (+Z).
-// It lifts off straight up from the globe and holds a hover.
+// It hovers beside the person, who flies it from a hand controller; a dashed line is the radio link.
 const droneL = mkLayer();
 const drone = new THREE.Group();
 droneL.group.add(drone);
@@ -1028,9 +1070,20 @@ const rotors = [];
   for (const o of [scan, lens]) o.renderOrder = 5;
   drone.add(scan, lens);
 }
+const droneLens = droneL.mats[droneL.mats.length - 1];
+const RADIO_N = 11; // dashes in the radio link
+const radioPos = new Float32Array(RADIO_N * 6);
+const radioGeo = new THREE.BufferGeometry();
+radioGeo.setAttribute('position', new THREE.BufferAttribute(radioPos, 3));
+{
+  const radio = new THREE.LineSegments(radioGeo, lineMat(droneL, EMBER, 0.8));
+  radio.frustumCulled = false;
+  radio.renderOrder = 5;
+  droneL.group.add(radio);
+}
 
 /* ------------------------------------------------------------------ */
-/* Jet (Earth stage)                                                    */
+/* Jet (Defence stage, closing screen)                                  */
 /* ------------------------------------------------------------------ */
 // An uncrewed fighter in wireframe. Nose along +X, wings along Z, fin along +Y.
 const jetL = mkLayer();
@@ -1074,6 +1127,7 @@ jetL.group.add(jet);
   for (const o of [trailA, trailB, burn]) o.renderOrder = 5;
   jet.add(fill, wire, trailA, trailB, burn);
 }
+const jetBurn = jetL.mats[jetL.mats.length - 1];
 
 /* ------------------------------------------------------------------ */
 /* Camera path                                                          */
@@ -1091,12 +1145,14 @@ const KEYS = [
   [3.0, 5.0, 2.8, 10.6, 0, -1.0, 0],
   [3.4, 0, 3.0, 17, 0, -4.8, 0],
   [4.0, 0, 2.4, 15.5, 0, -4.4, 0],
-  [4.3, 0.9, -1.2, 10.5, 0, -1.3, 4],
-  [4.9, 0.4, -1.3, 10.1, 0, -1.3, 4],
-  [5.36, 0, 5.0, 12.8, 0, -0.5, 0],
-  [5.9, 0.9, 4.7, 12.4, 0, -0.5, 0],
-  [6.6, 0, 10, 36, 0, -8.5, 0],
-  [7.0, 0, 10, 36, 0, -8.5, 0],
+  [4.24, 1.0, -0.6, 12.6, 0, -0.8, 4],
+  [4.84, 0.5, -0.65, 12.3, 0, -0.8, 4],
+  [5.24, 0.9, -1.2, 10.5, 0, -1.3, 4],
+  [5.9, 0.4, -1.3, 10.1, 0, -1.3, 4],
+  [6.36, 0, 5.0, 12.8, 0, -0.5, 0],
+  [6.9, 0.9, 4.7, 12.4, 0, -0.5, 0],
+  [7.6, 0, 10, 36, 0, -8.5, 0],
+  [8.0, 0, 10, 36, 0, -8.5, 0],
 ];
 const camPos = new V3();
 const camTgt = new V3();
@@ -1118,10 +1174,9 @@ function cameraAt(s) {
 const panels = [...document.querySelectorAll('.panel')];
 const railTicks = [...document.querySelectorAll('.rail li')];
 const stageNum = document.getElementById('stageNum');
-const stageName = document.getElementById('stageName');
 const leaders = document.getElementById('leaders');
 const SVGNS = 'http://www.w3.org/2000/svg';
-const TILE_AT = { 1: [1.63, 1.7], 2: [2.68, 2.8], 3: [3.45, 3.58], 4: [4.5, 4.62], 5: [5.5, 5.62] };
+const TILE_AT = { 1: [1.63, 1.7], 2: [2.68, 2.8], 3: [3.45, 3.58], 4: [4.38, 4.5], 5: [5.5, 5.62], 6: [6.5, 6.62] };
 const CARD_W = 340;
 
 function chipFor(c) {
@@ -1275,8 +1330,8 @@ function closeCards() {
 // Preview aid: index.html?s=1.7&open=moonshot shows that company's description open.
 {
   const c = COMPANIES.find((x) => x.id === new URLSearchParams(window.location.search).get('open'));
-  // On the closing screen (s past 6.5) it opens from the portfolio list instead.
-  if (c && PIN !== null && PIN > 6.5) setTimeout(() => openFromList(c, true), 500);
+  // On the closing screen (s past 7.5) it opens from the portfolio list instead.
+  if (c && PIN !== null && PIN > 7.5) setTimeout(() => openFromList(c, true), 500);
   else if (c) openCard(c);
 }
 document.addEventListener('click', closeCards);
@@ -1284,7 +1339,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCards
 
 function panelOpacity(i, s) {
   if (i === 0) return 1 - sramp(s, 0.45, 0.9);
-  if (i === 6) return sramp(s, 6.42, 6.72);
+  if (i === 7) return sramp(s, 7.42, 7.72);
   return sramp(s, i + 0.05, i + 0.2) * (1 - sramp(s, i + 0.86, i + 0.97));
 }
 
@@ -1342,7 +1397,7 @@ function placeTiles(s, st) {
         const ay = (-w.y * 0.5 + 0.5) * H;
         if (w.z < 1 && ax > -20 && ax < W + 20 && ay > 0 && ay < H) {
           // Preferred side, unless the label would run off the screen there.
-          const side = narrow && ['blade', 'panel', 'lpu', 'rack'].includes(c.anchor.type) ? 1 : c.side;
+          const side = narrow && ['blade', 'panel', 'lpu', 'rack'].includes(c.anchor.type) ? 1 : (narrow && c.mside) || c.side;
           // Keep the preferred side with a shorter reach if that still clears the anchor; otherwise swap.
           const maxL = Math.max(m, (narrow ? W - m : railLeft - 16) - c.w);
           const at = (sd) => clamp(sd > 0 ? ax + reach : ax - reach - c.w, m, maxL);
@@ -1455,7 +1510,7 @@ function update(s, dt) {
     const hot = (i === HOST ? seat : ramp(e, 0.97, 1)) * (0.7 + 0.3 * Math.sin(time * 5 + b.ph * 3));
     b.ledMat.color.copy(ledDim).lerp(ledHot, hot);
   }
-  const satO = 1 - win(s, 4.0, 4.2, 6.02, 6.3);
+  const satO = 1 - win(s, 3.96, 4.14, 7.02, 7.3);
   // Loose servers dim while the chip is shown on its own.
   setO(bladeL, satO * (1 - 0.5 * win(s, 1.03, 1.14, 1.3, 1.44)));
   setO(frameL, win(s, 1.44, 1.62, 2.02, 2.2));
@@ -1507,24 +1562,27 @@ function update(s, dt) {
   craft.rotation.z = sramp(s, 2.62, 3.0) * 0.22;
 
   /* environment */
-  setO(groundL, win(s, 0.55, 1.1, 2.2, 2.46));
-  groundL.group.position.y = -1.76 - smooth(ramp(s, 2.2, 2.5)) * 34;
+  // The floor of the rack; it comes back under the person in the Defence stage (placed there further down).
+  const figO = win(s, 4.1, 4.28, 4.9, 5.08);
+  setO(groundL, Math.max(win(s, 0.55, 1.1, 2.2, 2.46), figO * 0.8));
+  groundL.group.position.set(0, -1.76 - smooth(ramp(s, 2.2, 2.5)) * 34, 0);
+  groundL.group.scale.setScalar(1);
   setO(starL, sramp(s, 2.2, 2.6) * 0.95 + 0.12);
   starL.group.rotation.y = s * 0.05 + time * 0.002;
   starL.group.rotation.x = s * 0.02;
 
   /* earth */
-  const earthO = Math.max(win(s, 2.62, 3.0, 4.0, 4.2), sramp(s, 5.92, 6.25));
+  const earthO = Math.max(win(s, 2.62, 3.0, 3.96, 4.14), sramp(s, 6.92, 7.25));
   setO(earthL, earthO);
   rimMat.uniforms.o.value = earthO;
-  earthSpin.quaternion.copy(qAmericas).slerp(qAsia, sramp(s, 4.2, 5.0));
+  earthSpin.quaternion.copy(qAmericas).slerp(qAsia, sramp(s, 5.2, 6.0));
   qYaw.setFromAxisAngle(Y_AXIS, reducedMotion ? 0 : Math.sin(time * 0.11) * 0.05);
   earthSpin.quaternion.premultiply(qYaw);
   earthL.group.updateMatrixWorld(true);
 
   /* beams */
   const beamGrow = sramp(s, 3.22, 3.5);
-  const beamO = beamGrow > 0 ? 1 - sramp(s, 3.95, 4.1) : 0;
+  const beamO = beamGrow > 0 ? 1 - sramp(s, 3.93, 4.06) : 0;
   setO(beamL, beamO);
   if (beamO > 0.004) {
     for (let i = 0; i < BEAM_CITIES.length; i++) {
@@ -1542,45 +1600,9 @@ function update(s, dt) {
     beamPkGeo.attributes.position.needsUpdate = true;
   }
 
-  /* jet: flies in over the globe for the Earth stage, then circles the globe on the closing screen */
-  const jetEarth = win(s, 3.36, 3.5, 3.92, 4.05);
-  const jetClose = sramp(s, 6.45, 6.75);
-  setO(jetL, Math.max(jetEarth, jetClose));
-  if (jetEarth > 0.004) {
-    const small = !isDesktop();
-    const along = -(1 - easeOut(ramp(s, 3.34, 3.66))) * 5 + (s - 3.7) * 1.1;
-    const wob = reducedMotion ? 0 : Math.sin(time * 0.8);
-    jet.position.set(
-      (small ? -2.2 : -4.5) + along * 0.95,
-      (small ? -2.15 : -2.95) + along * 0.2 + wob * 0.05,
-      1.5 + along * 0.2,
-    );
-    jet.rotation.set(0.85 + wob * 0.06, -0.22, 0.2);
-    jet.scale.setScalar(small ? 1 : 1.25);
-  } else if (jetClose > 0.004) {
-    // A level circle around the globe, banked into the turn; it passes in front of the globe and then behind it.
-    const th = reducedMotion ? 1.1 : time * 0.22 + 1.1;
-    jet.position.set(EARTH_C.x + Math.cos(th) * 8.4, EARTH_C.y + 1, EARTH_C.z + Math.sin(th) * 8.4);
-    jet.rotation.set(0.62, -(th + Math.PI / 2), 0);
-    jet.scale.setScalar(1.8);
-  }
-
-  /* quadcopter: lifts straight off the globe and holds a hover across from the jet */
-  const drO = win(s, 3.36, 3.5, 3.92, 4.05);
-  setO(droneL, drO);
-  if (drO > 0.004) {
-    const small = !isDesktop();
-    const up = easeOut(ramp(s, 3.36, 3.72));
-    const bob = reducedMotion ? 0 : Math.sin(time * 0.9 + 1);
-    drone.position.set(small ? 2.0 : 3.7, (small ? -2.2 : -2.7) - (1 - up) * 2.6 + bob * 0.06, 1.6);
-    drone.rotation.set(0.5 + bob * 0.03, -0.45, -0.1 + bob * 0.03);
-    drone.scale.setScalar(small ? 0.95 : 1.15);
-    for (const r of rotors) r.prop.rotation.y = reducedMotion ? 0.4 : time * 11 * r.dir;
-  }
-
   /* network arcs */
-  const arcDraw = ramp(s, 6.05, 6.5);
-  setO(arcL, sramp(s, 6.0, 6.12));
+  const arcDraw = ramp(s, 7.05, 7.5);
+  setO(arcL, sramp(s, 7.0, 7.12));
   for (let i = 0; i < arcs.length; i++) {
     const a = arcs[i];
     const d = easeOut(clamp(arcDraw * 1.6 - (i / arcs.length) * 0.6));
@@ -1591,22 +1613,78 @@ function update(s, dt) {
   }
   arcPkGeo.attributes.position.needsUpdate = true;
 
-  /* town: scaled up to the head alone for the Mind stage, a city for the Network stage,
-     then small on the globe for the closing screen */
-  const toCity = sramp(s, 4.9, 5.36);
-  const toGlobe = sramp(s, 5.88, 6.4);
-  const townS = Math.pow(1 / TOWN_HEAD, 1 - toCity) * Math.pow(MINI, toGlobe);
+  /* town: the standing figure alone for the Defence stage, scaled up to the head alone for the Mind stage,
+     a city for the Network stage, then small on the globe for the closing screen */
+  const toHead = sramp(s, 4.84, 5.2);
+  const toCity = sramp(s, 5.9, 6.36);
+  const toGlobe = sramp(s, 6.88, 7.4);
+  const figS = Math.pow(DEF_S, 1 - toHead) * Math.pow(1 / TOWN_HEAD, toHead * (1 - toCity));
+  const townS = figS * Math.pow(MINI, toGlobe);
   town.scale.setScalar(townS);
-  town.position.copy(HEAD_CLOSE).lerp(tmp.set(TOWN_P.x, TOWN_P.y + HEAD_Y, TOWN_P.z), toCity);
-  town.position.y -= HEAD_Y * Math.pow(1 / TOWN_HEAD, 1 - toCity);
+  town.position.copy(DEF_HEAD).lerp(HEAD_CLOSE, toHead).lerp(tmp.set(TOWN_P.x, TOWN_P.y + HEAD_Y, TOWN_P.z), toCity);
+  town.position.y -= HEAD_Y * figS;
   town.position.lerp(MINI_P, toGlobe);
   town.quaternion.copy(IDENT).slerp(MINI_Q, toGlobe);
-  // The head keeps turning as in the Mind stage, then the person settles into a three-quarter view.
-  person.rotation.y = mix(-0.32 + (Math.min(s, 4.9) - 4.5) * 0.5, -0.62, sramp(s, 4.9, 5.4)) + px * 0.12;
-  const townO = sramp(s, 5.1, 5.3);
-  setO(bodyL, sramp(s, 4.93, 5.1));
+  // The person turns slowly through the Defence and Mind stages, then settles into a three-quarter view.
+  person.rotation.y = mix(-0.32 + (Math.min(s, 5.9) - 5.5) * 0.5, -0.62, sramp(s, 5.9, 6.4)) + px * 0.12;
+  const townO = sramp(s, 6.1, 6.3);
+  const inTown = sramp(s, 5.93, 6.1);
+  setO(bodyL, Math.max(figO, inTown));
+  setO(holdL, figO);
+  setO(armL, inTown);
   setO(townL, townO);
-  setO(farL, townO * (1 - sramp(s, 5.86, 6.04)));
+  setO(farL, townO * (1 - sramp(s, 6.86, 7.04)));
+  if (figO > 0.004) {
+    // The ground stays under the person's feet and grows with them as the view closes in on the head.
+    groundL.group.position.copy(town.position);
+    groundL.group.scale.setScalar(townS / DEF_S);
+  }
+
+  /* defence: the person flies a quadcopter from a hand controller while a jet crosses the sky.
+     The jet then circles the globe on the closing screen. */
+  const defO = win(s, 4.16, 4.32, 4.84, 4.98);
+  const jetClose = sramp(s, 7.45, 7.75);
+  setO(jetL, Math.max(defO, jetClose));
+  setO(droneL, defO);
+  if (defO > 0.004) {
+    const small = !isDesktop();
+    const t = reducedMotion ? 0 : time;
+    // Both are placed in the person's own space, so they leave the picture as it closes in on the head.
+    const place = (o, x, y, z, k) => {
+      o.position.set(x, y, z).multiplyScalar(townS).add(town.position);
+      o.scale.setScalar(k * townS);
+    };
+    const along = -(1 - easeOut(ramp(s, 4.14, 4.5))) * 2.2 + (s - 4.5) * 0.9;
+    const wob = Math.sin(t * 0.8);
+    place(jet, (small ? -0.6 : -1.6) + along, (small ? 2.46 : 2.74) + along * 0.1 + wob * 0.02, -1.2, small ? 0.3 : 0.4);
+    jet.rotation.set(0.85 + wob * 0.06, -0.22, 0.2);
+    jetBurn.size = 0.44 * jet.scale.x;
+    const bob = Math.sin(t * 0.9 + 1);
+    place(drone, small ? 0.78 : 1.25, (small ? 1.84 : 2.1) + bob * 0.03, 0.4, small ? 0.3 : 0.36);
+    drone.rotation.set(0.5 + bob * 0.03, -0.45, -0.1 + bob * 0.03);
+    droneLens.size = 0.44 * drone.scale.x;
+    for (const r of rotors) r.prop.rotation.y = reducedMotion ? 0.4 : time * 11 * r.dir;
+    // Radio link: dashes that run from the controller's aerial up to the drone.
+    person.updateWorldMatrix(true, false);
+    person.localToWorld(kA.copy(CTRL_TIP));
+    const flow = reducedMotion ? 0 : (time * 0.45) % 1;
+    for (let k = 0; k < RADIO_N; k++) {
+      for (let e = 0; e < 2; e++) {
+        const f = clamp((k + flow + e * 0.45) / RADIO_N, 0, 0.93);
+        radioPos[k * 6 + e * 3] = mix(kA.x, drone.position.x, f);
+        radioPos[k * 6 + e * 3 + 1] = mix(kA.y, drone.position.y, f);
+        radioPos[k * 6 + e * 3 + 2] = mix(kA.z, drone.position.z, f);
+      }
+    }
+    radioGeo.attributes.position.needsUpdate = true;
+  } else if (jetClose > 0.004) {
+    // A level circle around the globe, banked into the turn; it passes in front of the globe and then behind it.
+    const th = reducedMotion ? 1.1 : time * 0.22 + 1.1;
+    jet.position.set(EARTH_C.x + Math.cos(th) * 8.4, EARTH_C.y + 1, EARTH_C.z + Math.sin(th) * 8.4);
+    jet.rotation.set(0.62, -(th + Math.PI / 2), 0);
+    jet.scale.setScalar(1.8);
+    jetBurn.size = 0.55;
+  }
   for (const m of TOWN_PT) m.size = m.userData.size * townS;
   for (const m of HEAD_PT) m.size = m.userData.size * townS * TOWN_HEAD;
   if (townO > 0.004) {
@@ -1618,7 +1696,7 @@ function update(s, dt) {
     bulbMats[0].opacity = townO * (blink ? 1 : 0.22);
     bulbMats[1].opacity = townO * (blink ? 0.22 : 1);
     chartGeo.setDrawRange(0, reducedMotion ? CHART_N : Math.min(CHART_N, 2 + Math.floor(((time * 0.2) % 1) * CHART_N * 1.7)));
-    const linkDraw = ramp(s, 5.4, 5.6);
+    const linkDraw = ramp(s, 6.4, 6.6);
     for (let i = 0; i < linkArcs.length; i++) {
       const a = linkArcs[i];
       const d = easeOut(clamp(linkDraw * 1.4 - i * 0.2));
@@ -1630,20 +1708,22 @@ function update(s, dt) {
   }
 
   /* head */
-  const headO = sramp(s, 4.12, 4.32);
+  const headO = sramp(s, 4.1, 4.28);
+  const chipO = sramp(s, 5.12, 5.3);
   setO(headL, headO);
+  setO(chipL, chipO);
   if (headO > 0.004) {
-    const seat = easeOut(ramp(s, 4.3, 4.5));
+    const seat = easeOut(ramp(s, 5.3, 5.5));
     chip.position.copy(CHIP_POS);
     chip.position.y += (1 - seat) * 1.7;
     chip.rotation.set(0, -person.rotation.y, 0.16);
-    const live = sramp(s, 4.46, 4.56);
+    const live = sramp(s, 5.46, 5.56);
     for (let k = 0; k < chipRings.length; k++) {
       const ph = reducedMotion ? 0.35 : (time * 0.55 + k * 0.5) % 1;
       chipRings[k].r.scale.setScalar(1 + ph * 1.5);
-      chipRings[k].m.opacity = chipRings[k].m.userData.base * headO * live * (1 - ph);
+      chipRings[k].m.opacity = chipRings[k].m.userData.base * chipO * live * (1 - ph);
     }
-    const wave = ramp(s, 4.45, 4.72) * 1.35;
+    const wave = ramp(s, 5.45, 5.72) * 1.35;
     for (let i = 0; i < NEUR; i++) {
       const act = clamp((wave - neurD[i] / neurMaxD) * 4) * (0.72 + 0.28 * Math.sin(time * 3 + i * 1.7));
       colTmp.copy(dimCol).lerp(hotCol, act);
@@ -1658,7 +1738,7 @@ function update(s, dt) {
       }
     }
     linkGeo.attributes.color.needsUpdate = true;
-    const th = sramp(s, 4.46, 4.6);
+    const th = sramp(s, 5.46, 5.6);
     for (let i = 0; i < THREADS; i++) {
       const t = threadTargets[i];
       threadPos[i * 6] = chip.position.x; threadPos[i * 6 + 1] = chip.position.y; threadPos[i * 6 + 2] = 0;
@@ -1670,7 +1750,7 @@ function update(s, dt) {
     skyPos[0] = chip.position.x; skyPos[1] = chip.position.y + 0.2; skyPos[2] = 0;
     skyPos[3] = chip.position.x - 0.5; skyPos[4] = chip.position.y + 7; skyPos[5] = -2;
     skyGeo.attributes.position.needsUpdate = true;
-    skyMat.opacity = skyMat.userData.base * headO * seat * (0.6 + 0.4 * Math.sin(time * 4));
+    skyMat.opacity = skyMat.userData.base * chipO * seat * (0.6 + 0.4 * Math.sin(time * 4));
   }
 
   /* camera */
@@ -1680,8 +1760,8 @@ function update(s, dt) {
   // Narrow but not tall (a small window, a tablet): pull back so the model clears the header and copy.
   if (!isDesktop()) dist = Math.max(dist, 1.24);
   // Closing screen: the globe moves aside (left on desktop, up on phones) to make room for the portfolio list.
-  const closeK = sramp(s, 6.0, 6.55);
-  const cityK = win(s, 4.95, 5.36, 5.9, 6.2);
+  const closeK = sramp(s, 7.0, 7.55);
+  const cityK = win(s, 5.95, 6.36, 6.9, 7.2);
   // The globe sits in the space the portfolio list leaves free, and is sized to fit it: left of the list
   // on desktop, between the header and the list on phones.
   const desk = isDesktop();
@@ -1721,7 +1801,7 @@ function update(s, dt) {
     }
     setShift(Math.round(sx), Math.round(window.innerHeight * 0.07 * closeK));
   } else {
-    const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 4.1, 4.3, 4.9, 5.05) * 0.07 - cityK * 0.02;
+    const k = win(s, 0.85, 1.2, 2.86, 3.05) * 0.17 + win(s, 5.1, 5.3, 5.9, 6.05) * 0.07 - cityK * 0.02;
     let sy = window.innerHeight * 0.13;
     if (closeK > 0) {
       camera.updateMatrixWorld(true);
@@ -1745,15 +1825,13 @@ function update(s, dt) {
   }
   placeTiles(s, st);
   if (openCo && PIN === null) {
-    const gone = openVia === 'list' ? panelOpacity(6, s) < 0.5 : !openCo.el.classList.contains('live');
+    const gone = openVia === 'list' ? panelOpacity(7, s) < 0.5 : !openCo.el.classList.contains('live');
     if (gone) closeCards();
   }
-  const idx = clamp(Math.floor(s), 0, 6);
-  const shownIdx = clamp(idx, 0, 5);
+  const idx = clamp(Math.floor(s), 0, 7);
+  const shownIdx = clamp(idx, 0, 6);
   const num = String(shownIdx).padStart(2, '0');
   if (stageNum.textContent !== num) stageNum.textContent = num;
-  const label = STAGES[idx].label;
-  if (stageName.textContent !== label) stageName.textContent = label;
   railTicks.forEach((t, i) => t.classList.toggle('on', i === idx - 1));
 }
 

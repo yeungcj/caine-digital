@@ -90,7 +90,6 @@ a { color: inherit; }
   text-decoration: none;
 }
 .stageinfo #stageNum { color: var(--ember); }
-.stageinfo #stageName { margin-left: 1em; color: var(--bone); min-width: 7em; text-align: right; }
 .stageinfo .sep { opacity: 0.5; }
 
 /* ---------- progress rail ---------- */
@@ -519,7 +518,6 @@ body.doc { min-height: 100vh; }
 /* ---------- phone ---------- */
 @media (max-width: 860px) {
   .rail { display: none; }
-  .stageinfo #stageName { display: none; }
   .mark { gap: 11px; }
   .logo { width: 38px; height: 38px; }
   .mark .wm { font-size: 10.5px; }
