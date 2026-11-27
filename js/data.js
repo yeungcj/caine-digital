@@ -32,7 +32,7 @@ export const COMPANIES = [
   {
     id: 'groq', name: 'Groq', stage: 1, sector: 'ai', tag: 'Inference chips', exited: true,
     desc: 'Groq was founded in 2016 by Jonathan Ross, a former Google engineer, to build the LPU: a chip made to run AI models quickly once they have been trained. In December 2025 Nvidia took a non-exclusive licence to the technology and hired Ross and most of the team, in a deal reported at about $20 billion that was paid out to Groq\'s shareholders. Nvidia has since built the technology into its own LPX systems.',
-    url: 'https://groq.com', logo: 'assets/logos/groq.svg',
+    url: 'https://groq.com', logo: 'assets/logos/groq-wordmark.svg', chipBg: '#fff',
     anchor: { type: 'lpu' }, side: 1, dy: -40, at: [1.12, 1.18, 1.34, 1.4],
   },
   {
