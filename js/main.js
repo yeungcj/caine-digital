@@ -142,6 +142,7 @@ const ledDim = new THREE.Color(0x4b4a44);
 const ledHot = new THREE.Color(EMBER);
 const IDENT = new THREE.Quaternion();
 const blades = [];
+const CLOSE_DIR = new V3(1.05, 1.1, 3.0).normalize(); // from the chip towards the camera in its close-up
 for (let i = 0; i < N; i++) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(bladeBox, bladeFillMat));
@@ -151,8 +152,17 @@ for (let i = 0; i < N; i++) {
   const scatter = new V3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize().multiplyScalar(2.4 + rnd() * 3.4);
   scatter.y *= 0.7;
   if (scatter.x < -1) scatter.x *= -0.85; // keep loose parts clear of the hero copy
+  // While the chip is shown close up, loose servers wait behind it and clear of the line of sight.
+  const dAlong = scatter.dot(CLOSE_DIR);
+  const back = scatter.clone().addScaledVector(CLOSE_DIR, -(dAlong + Math.max(Math.abs(dAlong), 2.6)));
+  const side = back.clone().addScaledVector(CLOSE_DIR, -back.dot(CLOSE_DIR));
+  const lateral = side.length();
+  if (lateral < 2.5) {
+    if (lateral < 0.05) side.set(1, 0.3, 0);
+    back.addScaledVector(side.normalize(), 2.5 - lateral);
+  }
   blades.push({
-    g, ledMat, scatter,
+    g, ledMat, scatter, back,
     slot: new V3(0, -1.45 + i * 0.223, 0),
     q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd() * 3, rnd() * 3, rnd() * 3)),
     axis: new V3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize(),
@@ -921,6 +931,92 @@ linkPkGeo.setAttribute('position', new THREE.BufferAttribute(linkPkPos, 3));
 town.traverse((c) => { c.frustumCulled = false; });
 
 /* ------------------------------------------------------------------ */
+/* Chip (start of the Intelligence stage)                               */
+/* ------------------------------------------------------------------ */
+// A processor in wireframe. It is shown alone first, then seats into one server, and that server
+// takes its place in the rack with the others.
+const HOST = 6; // the server that receives the chip
+const lpuL = mkLayer(craft);
+const lpu = new THREE.Group();
+lpuL.group.add(lpu);
+const LPU_FLOAT = new V3(0, 0.42, 0);
+const LPU_SEAT = blades[HOST].slot.clone();
+LPU_SEAT.y += 0.077;
+const lpuRings = [];
+{
+  const S = mkShape();
+  S.box(0, 0, 0, 0.5, 0.024, 0.5); // substrate
+  S.box(0, 0.024, 0, 0.32, 0.034, 0.32); // lid
+  const y = 0.0585;
+  S.path([[-0.1, y, -0.1], [0.1, y, -0.1], [0.1, y, 0.1], [-0.1, y, 0.1]], true, S.ember);
+  // Contacts along each edge.
+  for (let i = -3; i <= 3; i++) {
+    const t = i * 0.066;
+    S.seg([t, 0.012, 0.25], [t, 0.012, 0.305]); S.seg([t, 0.012, -0.25], [t, 0.012, -0.305]);
+    S.seg([0.25, 0.012, t], [0.305, 0.012, t]); S.seg([-0.25, 0.012, t], [-0.305, 0.012, t]);
+  }
+  // Corner mark, and the small parts around the lid.
+  S.seg([-0.25, 0.0245, -0.17], [-0.17, 0.0245, -0.25], S.ember);
+  for (const d of [-1, 1]) {
+    for (const t of [-0.1, 0, 0.1]) {
+      S.seg([t - 0.026, 0.0245, 0.205 * d], [t + 0.026, 0.0245, 0.205 * d], S.dim);
+      S.seg([0.205 * d, 0.0245, t - 0.026], [0.205 * d, 0.0245, t + 0.026], S.dim);
+    }
+  }
+  S.build(lpu, shapeMats(lpuL, 0.9));
+  lpu.add(new THREE.Points(segGeo([0, 0.07, 0]), glowMat(lpuL, EMBER, 0.4, 0.8)));
+  // Two outlines that pulse outward while the chip is on its own.
+  const r = 0.25;
+  const ringGeo = segGeo([-r, 0.03, -r, r, 0.03, -r, r, 0.03, -r, r, 0.03, r, r, 0.03, r, -r, 0.03, r, -r, 0.03, r, -r, 0.03, -r]);
+  for (let k = 0; k < 2; k++) {
+    const m = lineMat(lpuL, EMBER, 0.8);
+    const ring = new THREE.LineSegments(ringGeo, m);
+    lpu.add(ring);
+    lpuRings.push({ ring, m });
+  }
+  // The socket on the server that receives it.
+  const q = 0.29;
+  const socket = new THREE.LineSegments(
+    segGeo([-q, 0.0765, -q, q, 0.0765, -q, q, 0.0765, -q, q, 0.0765, q, q, 0.0765, q, -q, 0.0765, q, -q, 0.0765, q, -q, 0.0765, -q]),
+    lineMat(lpuL, EMBER, 0.55),
+  );
+  blades[HOST].g.add(socket);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tail-sitter drone (Earth stage)                                      */
+/* ------------------------------------------------------------------ */
+// A drone that stands on its tail over a ducted fan: nose along +Y, wings along X. It lifts off
+// straight up from the globe and holds a hover.
+const vbatL = mkLayer();
+const vbat = new THREE.Group();
+vbatL.group.add(vbat);
+{
+  const S = mkShape();
+  S.loft([[-0.62, 0, 0, 0.075, 0.075], [-0.3, 0, 0, 0.09, 0.09], [0.38, 0, 0, 0.09, 0.09], [0.8, 0, 0, 0.06, 0.06], [1.02, 0, 0, 0.006, 0.006]], 6);
+  for (const d of [1, -1]) {
+    const w = [[0.085 * d, 0.24, 0], [1.02 * d, 0.1, 0], [1.02 * d, 0.01, 0], [0.085 * d, -0.06, 0]];
+    S.path(w, true);
+    S.quad(...w);
+  }
+  S.loft([[-0.92, 0, 0, 0.215, 0.215], [-0.66, 0, 0, 0.215, 0.215]], 10); // fan duct
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI * 0.5 + Math.PI * 0.25;
+    const c = Math.cos(a);
+    const n = Math.sin(a);
+    const f = [[c * 0.07, -0.48, n * 0.07], [c * 0.215, -0.66, n * 0.215], [c * 0.215, -0.92, n * 0.215], [c * 0.05, -0.74, n * 0.05]];
+    S.path(f, true);
+    S.quad(...f);
+  }
+  S.build(vbat, shapeMats(vbatL, 0.9));
+  const washA = new THREE.LineSegments(segGeo([0, -0.94, 0, 0, -1.5, 0]), lineMat(vbatL, EMBER, 0.5));
+  const washB = new THREE.LineSegments(segGeo([0, -1.5, 0, 0, -2.4, 0]), lineMat(vbatL, EMBER, 0.18));
+  const fan = new THREE.Points(segGeo([0, -0.9, 0]), glowMat(vbatL, EMBER, 0.5, 0.9));
+  for (const o of [washA, washB, fan]) o.renderOrder = 5;
+  vbat.add(washA, washB, fan);
+}
+
+/* ------------------------------------------------------------------ */
 /* Jet (Earth stage)                                                    */
 /* ------------------------------------------------------------------ */
 // An uncrewed fighter in wireframe. Nose along +X, wings along Z, fin along +Y.
@@ -973,7 +1069,9 @@ jetL.group.add(jet);
 const KEYS = [
   [0.0, 0, 0.8, 11.5, 0, 0, 0],
   [1.0, 3.0, 1.4, 9.2, 0, 0, 0],
-  [1.6, 4.7, 1.0, 6.6, 0, 0.05, 0],
+  [1.14, 1.05, 1.5, 3.0, 0, 0.4, 0],
+  [1.34, 1.25, 1.45, 3.1, 0, 0.38, 0],
+  [1.68, 4.7, 1.0, 6.6, 0, 0.05, 0],
   [2.0, 4.9, 0.6, 7.4, 0, 0.3, 0],
   [2.35, 3.6, -2.2, 12.4, 0, -0.9, 0],
   [2.75, 5.6, 2.4, 9.4, 0, -0.3, 0],
@@ -1010,7 +1108,7 @@ const stageNum = document.getElementById('stageNum');
 const stageName = document.getElementById('stageName');
 const leaders = document.getElementById('leaders');
 const SVGNS = 'http://www.w3.org/2000/svg';
-const TILE_AT = { 1: [1.5, 1.62], 2: [2.68, 2.8], 3: [3.45, 3.58], 4: [4.5, 4.62], 5: [5.5, 5.62] };
+const TILE_AT = { 1: [1.63, 1.7], 2: [2.68, 2.8], 3: [3.45, 3.58], 4: [4.5, 4.62], 5: [5.5, 5.62] };
 const CARD_W = 340;
 
 function chipFor(c) {
@@ -1064,7 +1162,9 @@ for (const sec of SECTORS) {
 for (const c of [...COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))) {
   const li = document.createElement('li');
   const badge = c.exited ? '<span class="badge">Exited</span>' : '';
-  li.innerHTML = `<button class="pitem" type="button">${chipFor(c)}<span class="pt"><b>${c.name}${badge}</b><i>${c.tag}</i></span></button>`;
+  // Two entries can share a name (one company, two interests); those keep their tag line on phones too.
+  const twin = COMPANIES.some((o) => o !== c && o.name === c.name) ? ' twin' : '';
+  li.innerHTML = `<button class="pitem${twin}" type="button">${chipFor(c)}<span class="pt"><b>${c.name}${badge}</b><i>${c.tag}</i></span></button>`;
   sectorList[c.sector].appendChild(li);
   const item = li.firstChild;
   c.pitem = item;
@@ -1190,6 +1290,9 @@ function anchorWorld(c, st, narrow) {
     const reachOut = 0.62 + PW * (a.wing === 'left' ? 0.72 : 0.5) * st.unfold;
     return craft.localToWorld(anchorTmp.set(a.wing === 'left' ? -reachOut : reachOut, 0, 0));
   }
+  if (a.type === 'lpu') return lpu.localToWorld(anchorTmp.set(0.305, 0.012, 0));
+  if (a.type === 'rack') return craft.localToWorld(anchorTmp.set(narrow ? 0.7 : -0.7, 1.72, 0.7));
+  if (a.type === 'vbat') return vbat.localToWorld(anchorTmp.set(0, 0.3, 0));
   if (a.type === 'jet') return jet.localToWorld(anchorTmp.set(0, 0.1, 0));
   if (a.type === 'landmark') return landmark[c.id].getWorldPosition(anchorTmp);
   if (a.type === 'hull') {
@@ -1228,7 +1331,7 @@ function placeTiles(s, st) {
         const ay = (-w.y * 0.5 + 0.5) * H;
         if (w.z < 1 && ax > -20 && ax < W + 20 && ay > 0 && ay < H) {
           // Preferred side, unless the label would run off the screen there.
-          const side = narrow && (c.anchor.type === 'blade' || c.anchor.type === 'panel') ? 1 : c.side;
+          const side = narrow && ['blade', 'panel', 'lpu', 'rack'].includes(c.anchor.type) ? 1 : c.side;
           // Keep the preferred side with a shorter reach if that still clears the anchor; otherwise swap.
           const maxL = Math.max(m, (narrow ? W - m : railLeft - 16) - c.w);
           const at = (sd) => clamp(sd > 0 ? ax + reach : ax - reach - c.w, m, maxL);
@@ -1320,13 +1423,17 @@ function update(s, dt) {
   const st = {};
 
   /* craft */
-  const asm = ramp(s, 1.05, 1.6);
+  // The chip is shown first. One server comes in to take it, then the rest stack into the rack around it.
+  const asm = ramp(s, 1.42, 1.66);
+  const hostIn = easeOut(ramp(s, 1.28, 1.42));
+  const seat = sramp(s, 1.37, 1.48);
+  const aside = sramp(s, 0.98, 1.14);
   const busK = sramp(s, 2.5, 2.7);
   for (let i = 0; i < N; i++) {
     const b = blades[i];
-    const e = easeOut(clamp(asm * 1.5 - (i / N) * 0.5));
+    const e = i === HOST ? hostIn : easeOut(clamp(asm * 1.5 - (i / N) * 0.5));
     const drift = 1 - e;
-    tmp.copy(b.scatter);
+    tmp.copy(b.scatter).lerp(b.back, aside);
     tmp.x += Math.sin(time * 0.3 + b.ph) * 0.3 * drift;
     tmp.y += Math.cos(time * 0.24 + b.ph) * 0.3 * drift;
     slot.copy(b.slot);
@@ -1334,12 +1441,30 @@ function update(s, dt) {
     b.g.position.lerpVectors(tmp, slot, e);
     qTmp.setFromAxisAngle(b.axis, time * 0.16 + b.ph);
     b.g.quaternion.copy(b.q).multiply(qTmp).slerp(IDENT, e);
-    const hot = ramp(e, 0.97, 1) * (0.7 + 0.3 * Math.sin(time * 5 + b.ph * 3));
+    const hot = (i === HOST ? seat : ramp(e, 0.97, 1)) * (0.7 + 0.3 * Math.sin(time * 5 + b.ph * 3));
     b.ledMat.color.copy(ledDim).lerp(ledHot, hot);
   }
   const satO = 1 - win(s, 4.0, 4.2, 6.02, 6.3);
-  setO(bladeL, satO);
-  setO(frameL, win(s, 1.05, 1.35, 2.02, 2.2));
+  // Loose servers dim while the chip is shown on its own.
+  setO(bladeL, satO * (1 - 0.5 * win(s, 1.03, 1.14, 1.3, 1.44)));
+  setO(frameL, win(s, 1.44, 1.62, 2.02, 2.2));
+
+  const lpuO = win(s, 1.03, 1.12, 1.9, 2.02);
+  setO(lpuL, lpuO);
+  if (lpuO > 0.004) {
+    const t = reducedMotion ? 0 : time;
+    const loose = 1 - sramp(s, 1.32, 1.44); // it levels out before it comes down onto the server
+    lpu.position.lerpVectors(LPU_FLOAT, LPU_SEAT, seat);
+    lpu.position.y += Math.sin(t * 0.9) * 0.02 * loose;
+    lpu.rotation.set(0.62 * loose, (0.45 + Math.sin(t * 0.35) * 0.28) * loose, 0);
+    lpu.scale.setScalar(mix(0.78, 1, sramp(s, 1.03, 1.14)));
+    const live = 1 - sramp(s, 1.4, 1.5);
+    for (let k = 0; k < lpuRings.length; k++) {
+      const ph = reducedMotion ? 0.35 : (time * 0.5 + k * 0.5) % 1;
+      lpuRings[k].ring.scale.set(1 + ph * 0.9, 1, 1 + ph * 0.9);
+      lpuRings[k].m.opacity = lpuRings[k].m.userData.base * lpuO * live * (1 - ph);
+    }
+  }
 
   const hullO = win(s, 2.03, 2.2, 2.45, 2.62);
   const sep = sramp(s, 2.42, 2.62);
@@ -1427,6 +1552,18 @@ function update(s, dt) {
     jet.position.set(EARTH_C.x + Math.cos(th) * 8.4, EARTH_C.y + 1, EARTH_C.z + Math.sin(th) * 8.4);
     jet.rotation.set(0.62, -(th + Math.PI / 2), 0);
     jet.scale.setScalar(1.8);
+  }
+
+  /* tail-sitter: lifts straight off the globe and holds a hover across from the jet */
+  const vbO = win(s, 3.36, 3.5, 3.92, 4.05);
+  setO(vbatL, vbO);
+  if (vbO > 0.004) {
+    const small = !isDesktop();
+    const up = easeOut(ramp(s, 3.36, 3.72));
+    const bob = reducedMotion ? 0 : Math.sin(time * 0.9 + 1);
+    vbat.position.set(small ? 2.0 : 3.7, (small ? -2.2 : -2.7) - (1 - up) * 2.6 + bob * 0.06, 1.6);
+    vbat.rotation.set(0.14 + bob * 0.03, 0.5, -0.12 + bob * 0.02);
+    vbat.scale.setScalar(small ? 0.8 : 1.1);
   }
 
   /* network arcs */
@@ -1563,7 +1700,8 @@ function update(s, dt) {
   // Shift the picture so the object sits clear of the copy.
   if (desk) {
     // The town is wider than the other models, so it sits nearer the middle.
-    let sx = window.innerWidth * (-0.13 + 0.04 * cityK);
+    // The chip in its close-up sits nearer the middle too, so its description has room beside it.
+    let sx = window.innerWidth * (-0.13 + 0.04 * cityK + 0.1 * win(s, 1.02, 1.14, 1.36, 1.56));
     if (closeK > 0) {
       camera.updateMatrixWorld(true);
       const x0 = (kA.copy(EARTH_C).project(camera).x + 1) * 0.5 * window.innerWidth + (shiftX || 0);

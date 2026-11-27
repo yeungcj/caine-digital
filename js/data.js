@@ -1,7 +1,7 @@
 // Scroll timeline. `len` is the scroll length of each stage in viewport heights (vh).
 export const STAGES = [
   { id: 'hero', len: 100, label: '' },
-  { id: 'rack', len: 240, label: 'Intelligence' },
+  { id: 'rack', len: 400, label: 'Intelligence' },
   { id: 'orbit', len: 330, label: 'Orbit' },
   { id: 'earth', len: 240, label: 'Earth' },
   { id: 'mind', len: 240, label: 'Mind' },
@@ -14,7 +14,8 @@ export const STAGES = [
 // `side` (1 = right of the anchor, -1 = left) and `dy` place the label; it flips sides by itself if it would
 // run off the screen. A blade anchor with `edge: 'left'` pins to the left edge of the rack instead of the right.
 // A panel anchor with `wing: 'left'` pins to the satellite's left solar panel instead of the right.
-// A jet anchor pins to the aircraft that flies over the Earth stage.
+// An lpu anchor pins to the chip that opens the Intelligence stage, and a rack anchor to the top of the rack.
+// A jet anchor pins to the aircraft that flies over the Earth stage, and a vbat anchor to the drone that lifts off beside it.
 // A landmark anchor pins to that company's building in the town of the Network stage.
 // On phones the model sits at the left of the screen, so rack and satellite labels go on the right there.
 // Optional fields:
@@ -26,6 +27,12 @@ export const STAGES = [
 //   `chipBg`, `pad`               logo tile background colour, and inset the logo inside the tile
 //   `display: 'name'`             name only: no logo and no link
 export const COMPANIES = [
+  {
+    id: 'groq', name: 'Groq', stage: 1, sector: 'ai', tag: 'Inference chips', exited: true,
+    desc: 'Groq was founded in 2016 by Jonathan Ross, a former Google engineer, to build the LPU: a chip made to run AI models quickly once they have been trained. In December 2025 Nvidia took a non-exclusive licence to the technology and hired Ross and most of the team, in a deal reported at about $20 billion that was paid out to Groq\'s shareholders. Nvidia has since built the technology into its own LPX systems.',
+    url: 'https://groq.com', logo: 'assets/logos/groq.svg',
+    anchor: { type: 'lpu' }, side: 1, dy: -40, at: [1.12, 1.18, 1.34, 1.4],
+  },
   {
     id: 'deepseek', name: 'DeepSeek', stage: 1, sector: 'ai', tag: 'AI lab',
     desc: 'DeepSeek is an AI lab based in Hangzhou, founded in 2023. Its R1 reasoning model drew worldwide attention in January 2025 for performing close to the leading US models at far lower cost. It publishes its model weights under an open licence, so anyone can download and run them.',
@@ -43,6 +50,12 @@ export const COMPANIES = [
     desc: 'Core Automation is a San Francisco AI research lab founded in 2026 by former OpenAI researcher Jerry Tworek and colleagues. It is developing new learning algorithms and model architectures as an alternative to scaling up today\'s transformers. The lab uses AI agents to automate much of its own research.',
     url: 'https://www.coreauto.com', logo: 'assets/logos/coreauto.png',
     anchor: { type: 'blade', i: 3 }, side: 1, dy: 34,
+  },
+  {
+    id: 'groqcloud', name: 'Groq', stage: 1, sector: 'ai', tag: 'Inference cloud',
+    desc: 'After the Nvidia deal, Groq carried on as an independent company with a single business: a cloud that runs AI models for other companies. It operates 13 data centres across North America, Europe, the Middle East and Asia Pacific, and serves more than six million developers. It raised $650 million in June 2026, and announced a further $350 million in August 2026 at a valuation of $3.5 billion.',
+    url: 'https://groq.com', logo: 'assets/logos/groq.svg',
+    anchor: { type: 'rack' }, side: -1, dy: -34,
   },
   {
     id: 'spacex', name: 'SpaceX', stage: 2, sector: 'space', tag: 'Launch', exited: true,
@@ -79,6 +92,12 @@ export const COMPANIES = [
     desc: 'Anduril Industries is a defence technology company based in Costa Mesa, California, founded in 2017 by Palmer Luckey and four partners. It builds autonomous aircraft, drones, undersea vehicles and missiles, run by its Lattice software, and sells them to the US military and its allies as finished products. Its Fury uncrewed fighter jet first flew in October 2025, and the US Air Force ordered it into production in June 2026.',
     url: 'https://www.anduril.com', logo: 'assets/logos/anduril.svg', chipBg: '#000',
     anchor: { type: 'jet' }, side: 1, dy: -72, reach: 0.62,
+  },
+  {
+    id: 'shieldai', name: 'Shield AI', stage: 3, sector: 'space', tag: 'Defence technology',
+    desc: 'Shield AI is a defence technology company based in San Diego, founded in 2015 by Brandon Tseng, a former Navy SEAL, his brother Ryan Tseng and Andrew Reiter. Its Hivemind software is an AI pilot that flies aircraft without GPS or a radio link, and its V-BAT drone takes off and lands standing on its tail. X-BAT, an uncrewed fighter that takes off the same way, was unveiled in October 2025, and its first full-scale prototype was finished in November 2026.',
+    url: 'https://shield.ai', logo: 'assets/logos/shieldai.svg', pad: true, chipBg: '#000',
+    anchor: { type: 'vbat' }, side: -1, dy: -64, mdy: 48, reach: 0.62,
   },
   {
     id: 'neuralink', name: 'Neuralink', stage: 4, sector: 'neuro', tag: 'Brain interface',
