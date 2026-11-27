@@ -70,7 +70,7 @@ export const COMPANIES = [
   },
   {
     id: 'alfred', name: 'Alfred', stage: 3, sector: 'ai', tag: 'Physical AI',
-    desc: 'Alfred is a physical-AI company based in Hawthorne, California. It builds software that helps engineers design and build robots, cars and other hardware faster. The aim is to bring the pace of software development to physical products.',
+    desc: 'Alfred is a physical-AI company based in Hawthorne, California, backed by Sam Altman. It builds software that helps engineers design and build robots, cars and other hardware faster. The aim is to bring the pace of software development to physical products. The company is still in stealth.',
     url: '', logo: '', monogram: 'A',
     anchor: { type: 'city', name: 'Los Angeles' }, side: 1, dy: 44,
   },
