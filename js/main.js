@@ -984,36 +984,49 @@ const lpuRings = [];
 }
 
 /* ------------------------------------------------------------------ */
-/* Tail-sitter drone (Earth stage)                                      */
+/* Quadcopter (Earth stage)                                             */
 /* ------------------------------------------------------------------ */
-// A drone that stands on its tail over a ducted fan: nose along +Y, wings along X. It lifts off
-// straight up from the globe and holds a hover.
-const vbatL = mkLayer();
-const vbat = new THREE.Group();
-vbatL.group.add(vbat);
+// A small four-rotor drone with guarded propellers, skids and a camera under its nose (+Z).
+// It lifts off straight up from the globe and holds a hover.
+const droneL = mkLayer();
+const drone = new THREE.Group();
+droneL.group.add(drone);
+const rotors = [];
 {
   const S = mkShape();
-  S.loft([[-0.62, 0, 0, 0.075, 0.075], [-0.3, 0, 0, 0.09, 0.09], [0.38, 0, 0, 0.09, 0.09], [0.8, 0, 0, 0.06, 0.06], [1.02, 0, 0, 0.006, 0.006]], 6);
+  S.loft([[-0.08, 0, 0, 0.15, 0.2], [-0.02, 0, 0, 0.21, 0.28], [0.05, 0, 0, 0.21, 0.28], [0.09, 0, 0, 0.13, 0.18]], 8);
+  for (const [dx, dz] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    const ux = dx * Math.SQRT1_2;
+    const uz = dz * Math.SQRT1_2;
+    const cx = ux * 0.8;
+    const cz = uz * 0.8;
+    const at = (r, w) => [ux * r - uz * w, 0.02, uz * r + ux * w];
+    const arm = [at(0.2, 0.04), at(0.76, 0.025), at(0.76, -0.025), at(0.2, -0.04)];
+    S.path(arm, true);
+    S.quad(...arm);
+    S.loft([[-0.02, cx, cz, 0.05, 0.05], [0.11, cx, cz, 0.05, 0.05]], 6); // motor
+    S.path(circlePts(0.34, 28, (x, z) => [cx + x, 0.1, cz + z]), true); // propeller guard
+    S.path(circlePts(0.34, 28, (x, z) => [cx + x, 0.14, cz + z]), true, S.dim);
+    const prop = new THREE.LineSegments(
+      segGeo([-0.31, 0, 0, 0.31, 0, 0, 0, 0, -0.31, 0, 0, 0.31]), lineMat(droneL, BONE, 0.55),
+    );
+    prop.position.set(cx, 0.12, cz);
+    prop.renderOrder = 5;
+    drone.add(prop);
+    rotors.push({ prop, dir: dx * dz });
+  }
   for (const d of [1, -1]) {
-    const w = [[0.085 * d, 0.24, 0], [1.02 * d, 0.1, 0], [1.02 * d, 0.01, 0], [0.085 * d, -0.06, 0]];
-    S.path(w, true);
-    S.quad(...w);
+    S.seg([0.27 * d, -0.32, -0.32], [0.27 * d, -0.32, 0.32]); // skid
+    for (const z of [-0.15, 0.15]) S.seg([0.13 * d, -0.07, z], [0.27 * d, -0.32, z]);
   }
-  S.loft([[-0.92, 0, 0, 0.215, 0.215], [-0.66, 0, 0, 0.215, 0.215]], 10); // fan duct
-  for (let k = 0; k < 4; k++) {
-    const a = k * Math.PI * 0.5 + Math.PI * 0.25;
-    const c = Math.cos(a);
-    const n = Math.sin(a);
-    const f = [[c * 0.07, -0.48, n * 0.07], [c * 0.215, -0.66, n * 0.215], [c * 0.215, -0.92, n * 0.215], [c * 0.05, -0.74, n * 0.05]];
-    S.path(f, true);
-    S.quad(...f);
-  }
-  S.build(vbat, shapeMats(vbatL, 0.9));
-  const washA = new THREE.LineSegments(segGeo([0, -0.94, 0, 0, -1.5, 0]), lineMat(vbatL, EMBER, 0.5));
-  const washB = new THREE.LineSegments(segGeo([0, -1.5, 0, 0, -2.4, 0]), lineMat(vbatL, EMBER, 0.18));
-  const fan = new THREE.Points(segGeo([0, -0.9, 0]), glowMat(vbatL, EMBER, 0.5, 0.9));
-  for (const o of [washA, washB, fan]) o.renderOrder = 5;
-  vbat.add(washA, washB, fan);
+  S.box(0, -0.2, 0.25, 0.15, 0.12, 0.11); // camera
+  S.build(drone, shapeMats(droneL, 0.9));
+  const scan = new THREE.LineSegments(
+    segGeo([0, -0.15, 0.31, 0.55, -1.7, 1.0, 0, -0.15, 0.31, -0.55, -1.7, 1.0]), lineMat(droneL, EMBER, 0.22),
+  );
+  const lens = new THREE.Points(segGeo([0, -0.14, 0.31]), glowMat(droneL, EMBER, 0.5, 0.9));
+  for (const o of [scan, lens]) o.renderOrder = 5;
+  drone.add(scan, lens);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1162,9 +1175,7 @@ for (const sec of SECTORS) {
 for (const c of [...COMPANIES].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))) {
   const li = document.createElement('li');
   const badge = c.exited ? '<span class="badge">Exited</span>' : '';
-  // Two entries can share a name (one company, two interests); those keep their tag line on phones too.
-  const twin = COMPANIES.some((o) => o !== c && o.name === c.name) ? ' twin' : '';
-  li.innerHTML = `<button class="pitem${twin}" type="button">${chipFor(c)}<span class="pt"><b>${c.name}${badge}</b><i>${c.tag}</i></span></button>`;
+  li.innerHTML = `<button class="pitem" type="button">${chipFor(c)}<span class="pt"><b>${c.name}${badge}</b><i>${c.tag}</i></span></button>`;
   sectorList[c.sector].appendChild(li);
   const item = li.firstChild;
   c.pitem = item;
@@ -1292,7 +1303,7 @@ function anchorWorld(c, st, narrow) {
   }
   if (a.type === 'lpu') return lpu.localToWorld(anchorTmp.set(0.305, 0.012, 0));
   if (a.type === 'rack') return craft.localToWorld(anchorTmp.set(narrow ? 0.7 : -0.7, 1.72, 0.7));
-  if (a.type === 'vbat') return vbat.localToWorld(anchorTmp.set(0, 0.3, 0));
+  if (a.type === 'drone') return drone.localToWorld(anchorTmp.set(0, 0.1, 0));
   if (a.type === 'jet') return jet.localToWorld(anchorTmp.set(0, 0.1, 0));
   if (a.type === 'landmark') return landmark[c.id].getWorldPosition(anchorTmp);
   if (a.type === 'hull') {
@@ -1554,16 +1565,17 @@ function update(s, dt) {
     jet.scale.setScalar(1.8);
   }
 
-  /* tail-sitter: lifts straight off the globe and holds a hover across from the jet */
-  const vbO = win(s, 3.36, 3.5, 3.92, 4.05);
-  setO(vbatL, vbO);
-  if (vbO > 0.004) {
+  /* quadcopter: lifts straight off the globe and holds a hover across from the jet */
+  const drO = win(s, 3.36, 3.5, 3.92, 4.05);
+  setO(droneL, drO);
+  if (drO > 0.004) {
     const small = !isDesktop();
     const up = easeOut(ramp(s, 3.36, 3.72));
     const bob = reducedMotion ? 0 : Math.sin(time * 0.9 + 1);
-    vbat.position.set(small ? 2.0 : 3.7, (small ? -2.2 : -2.7) - (1 - up) * 2.6 + bob * 0.06, 1.6);
-    vbat.rotation.set(0.14 + bob * 0.03, 0.5, -0.12 + bob * 0.02);
-    vbat.scale.setScalar(small ? 0.8 : 1.1);
+    drone.position.set(small ? 2.0 : 3.7, (small ? -2.2 : -2.7) - (1 - up) * 2.6 + bob * 0.06, 1.6);
+    drone.rotation.set(0.5 + bob * 0.03, -0.45, -0.1 + bob * 0.03);
+    drone.scale.setScalar(small ? 0.95 : 1.15);
+    for (const r of rotors) r.prop.rotation.y = reducedMotion ? 0.4 : time * 11 * r.dir;
   }
 
   /* network arcs */

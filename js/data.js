@@ -15,7 +15,7 @@ export const STAGES = [
 // run off the screen. A blade anchor with `edge: 'left'` pins to the left edge of the rack instead of the right.
 // A panel anchor with `wing: 'left'` pins to the satellite's left solar panel instead of the right.
 // An lpu anchor pins to the chip that opens the Intelligence stage, and a rack anchor to the top of the rack.
-// A jet anchor pins to the aircraft that flies over the Earth stage, and a vbat anchor to the drone that lifts off beside it.
+// A jet anchor pins to the aircraft that flies over the Earth stage, and a drone anchor to the quadcopter that lifts off beside it.
 // A landmark anchor pins to that company's building in the town of the Network stage.
 // On phones the model sits at the left of the screen, so rack and satellite labels go on the right there.
 // Optional fields:
@@ -52,8 +52,8 @@ export const COMPANIES = [
     anchor: { type: 'blade', i: 3 }, side: 1, dy: 34,
   },
   {
-    id: 'groqcloud', name: 'Groq', stage: 1, sector: 'ai', tag: 'Inference cloud',
-    desc: 'After the Nvidia deal, Groq carried on as an independent company with a single business: a cloud that runs AI models for other companies. It operates 13 data centres across North America, Europe, the Middle East and Asia Pacific, and serves more than six million developers. It raised $650 million in June 2026, and announced a further $350 million in August 2026 at a valuation of $3.5 billion.',
+    id: 'groqcloud', name: 'Groq Cloud', stage: 1, sector: 'ai', tag: 'Inference cloud',
+    desc: 'Groq Cloud is what Groq became after the Nvidia deal: an independent company with a single business, a cloud that runs AI models for other companies. It operates 13 data centres across North America, Europe, the Middle East and Asia Pacific, and serves more than six million developers. It raised $650 million in June 2026, and announced a further $350 million in August 2026 at a valuation of $3.5 billion.',
     url: 'https://groq.com', logo: 'assets/logos/groq.svg',
     anchor: { type: 'rack' }, side: -1, dy: -34,
   },
@@ -95,9 +95,9 @@ export const COMPANIES = [
   },
   {
     id: 'shieldai', name: 'Shield AI', stage: 3, sector: 'space', tag: 'Defence technology',
-    desc: 'Shield AI is a defence technology company based in San Diego, founded in 2015 by Brandon Tseng, a former Navy SEAL, his brother Ryan Tseng and Andrew Reiter. Its Hivemind software is an AI pilot that flies aircraft without GPS or a radio link, and its V-BAT drone takes off and lands standing on its tail. X-BAT, an uncrewed fighter that takes off the same way, was unveiled in October 2025, and its first full-scale prototype was finished in November 2026.',
+    desc: 'Shield AI is a defence technology company based in San Diego, founded in 2015 by Brandon Tseng, a former Navy SEAL, his brother Ryan Tseng and Andrew Reiter. Its Hivemind software is an AI pilot that flies drones without GPS or a radio link. It first flew on Nova, a quadcopter that searches buildings on its own, and now flies V-BAT, a drone that takes off and lands standing on its tail. X-BAT, an uncrewed fighter that takes off the same way, was unveiled in October 2025, and its first full-scale prototype was finished in November 2026.',
     url: 'https://shield.ai', logo: 'assets/logos/shieldai.svg', pad: true, chipBg: '#000',
-    anchor: { type: 'vbat' }, side: -1, dy: -64, mdy: 48, reach: 0.62,
+    anchor: { type: 'drone' }, side: -1, dy: -64, mdy: 48, reach: 0.62,
   },
   {
     id: 'neuralink', name: 'Neuralink', stage: 4, sector: 'neuro', tag: 'Brain interface',
